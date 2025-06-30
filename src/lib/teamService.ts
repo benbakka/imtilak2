@@ -51,7 +51,10 @@ export class TeamService {
   static async getAllActiveTeams(companyId: string): Promise<Team[]> {
     console.log('TeamService.getAllActiveTeams - Request for company ID:', companyId);
     try {
-      const response = await apiClient.get<any>('/teams/all', { companyId: Number(companyId) });
+      // Define a more specific type for the response to handle the paginated format
+      type TeamResponse = Team[] | PaginatedResponse<Team> | Team | Record<string, any>;
+      
+      const response = await apiClient.get<TeamResponse>('/teams/all', { companyId: Number(companyId) });
       console.log('TeamService.getAllActiveTeams - Raw response:', response);
       console.log('TeamService.getAllActiveTeams - Response type:', typeof response);
       
@@ -64,14 +67,15 @@ export class TeamService {
         teamsData = response;
       }
       // Case 2: Response is an object with a content property that is an array
-      else if (response && typeof response === 'object' && Array.isArray(response.content)) {
-        console.log('TeamService.getAllActiveTeams - Response has content array with', response.content.length, 'items');
-        teamsData = response.content;
+      else if (response && typeof response === 'object' && 'content' in response && Array.isArray((response as PaginatedResponse<Team>).content)) {
+        const paginatedResponse = response as PaginatedResponse<Team>;
+        console.log('TeamService.getAllActiveTeams - Response has content array with', paginatedResponse.content.length, 'items');
+        teamsData = paginatedResponse.content;
       }
       // Case 3: Response is a single team object
-      else if (response && typeof response === 'object' && response.id) {
+      else if (response && typeof response === 'object' && 'id' in response) {
         console.log('TeamService.getAllActiveTeams - Response is a single team object');
-        teamsData = [response];
+        teamsData = [response as Team];
       }
       // Case 4: Response is an object with teams as properties
       else if (response && typeof response === 'object') {

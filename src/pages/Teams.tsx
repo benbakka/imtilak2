@@ -59,18 +59,16 @@ const Teams: React.FC = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Check if user is loaded and has a company_id
     if (user) {
       if (!user.company_id) {
         console.warn('User is missing company_id, using default value');
-        // For demo purposes, use a default company ID if missing
         user.company_id = '1';
       }
       loadTeams();
     }
   }, [user]);
 
-  const loadTeams = async () => {
+  const loadTeams = async (): Promise<void> => {
     if (!user?.company_id) {
       console.log('No company ID available, cannot load teams');
       return;
@@ -81,67 +79,39 @@ const Teams: React.FC = () => {
       setError('');
       console.log('Attempting to load teams for company ID:', user.company_id);
       
-      // Use getAllActiveTeams to get all active teams without pagination
       const teamsResponse = await TeamService.getAllActiveTeams(user.company_id);
-      console.log('Teams response type:', typeof teamsResponse);
       console.log('Teams response:', teamsResponse);
       
-      // Handle different response formats
-      let teamsData = teamsResponse;
-      
-      // If the response is an object with a content property that is an array, use that
-      if (!Array.isArray(teamsResponse) && teamsResponse && typeof teamsResponse === 'object' && Array.isArray(teamsResponse.content)) {
-        console.log('Response has content array, using that instead');
-        teamsData = teamsResponse.content;
-      }
-      
-      // If we have a single team object, wrap it in an array
-      if (!Array.isArray(teamsData) && teamsData && typeof teamsData === 'object' && teamsData.id) {
-        console.log('Response is a single team object, wrapping in array');
-        teamsData = [teamsData];
-      }
-      
-      // Ensure we have an array to work with
-      if (!Array.isArray(teamsData)) {
-        console.error('Could not extract teams array from response:', teamsResponse);
+      if (!Array.isArray(teamsResponse)) {
+        console.error('Expected array but got:', typeof teamsResponse);
         setTeams([]);
         setError('Received invalid data format from server');
         return;
       }
       
-      // Check if we have any teams
-      if (teamsData.length === 0) {
+      if (teamsResponse.length === 0) {
         console.log('No teams returned from server');
         setTeams([]);
         return;
       }
       
-      // Ensure all teams have the required properties
-      teamsData = teamsData.map(team => {
+      const normalizedTeams = teamsResponse.map(team => {
         if (!team) return null;
         
-        // Create a new team object with all required properties
         return {
-          id: team.id || String(Math.random()), // Ensure ID exists
+          id: team.id || String(Math.random()),
           name: team.name || 'Unnamed Team',
           specialty: team.specialty || 'General',
           company_id: team.company_id || user.company_id,
-          color: team.color || colorOptions[Math.floor(Math.random() * colorOptions.length)], // Random color from options
+          color: team.color || colorOptions[Math.floor(Math.random() * colorOptions.length)],
           created_at: team.created_at || new Date().toISOString(),
           description: team.description || '',
-          is_active: team.is_active !== false // Default to active if not specified
-        };
-      }).filter(Boolean); // Remove any null entries
+          is_active: team.is_active !== false
+        } as Team;
+      }).filter((team): team is Team => team !== null);
       
-      // Log each team for debugging
-      teamsData.forEach((team, index) => {
-        console.log(`Team ${index}:`, team.id, team.name, team.specialty, team.color);
-      });
-      
-      console.log('Total teams after normalization:', teamsData.length);
-      
-      // Set the teams state with normalized teams
-      setTeams(teamsData);
+      console.log('Total teams after normalization:', normalizedTeams.length);
+      setTeams(normalizedTeams);
     } catch (error) {
       console.error('Error loading teams:', error);
       setError('Failed to load teams');
@@ -150,23 +120,17 @@ const Teams: React.FC = () => {
     }
   };
 
-  // Filter teams based on search term
   const filteredTeams = teams.filter(team => {
-    // If no search term, include all teams
     if (!searchTerm.trim()) {
       return true;
     }
     
-    // Otherwise filter by name or specialty
     const searchLower = searchTerm.toLowerCase();
     return (
       team.name.toLowerCase().includes(searchLower) ||
       team.specialty.toLowerCase().includes(searchLower)
     );
   });
-  
-  console.log('Teams after filtering:', filteredTeams.length, 'of', teams.length);
-  console.log('Filtered teams details:', filteredTeams.map(team => ({ id: team.id, name: team.name, specialty: team.specialty })));
 
   const handleCreateTeam = () => {
     setEditingTeam(null);
@@ -207,11 +171,6 @@ const Teams: React.FC = () => {
   };
 
   const TeamCard: React.FC<{ team: Team }> = ({ team }) => {
-    console.log('TeamCard rendering for team:', team.id, team.name);
-    
-    // No need to check for required properties as they're now guaranteed by loadTeams
-    // Just use the properties directly with confidence
-    
     const IconComponent = specialtyIcons[team.specialty as keyof typeof specialtyIcons] || Users;
     
     return (
@@ -281,7 +240,6 @@ const Teams: React.FC = () => {
     );
   };
 
-  // Create/Edit Team Modal
   const TeamModal: React.FC = () => {
     const [formData, setFormData] = useState({
       name: '',
@@ -336,45 +294,25 @@ const Teams: React.FC = () => {
 
       setIsSubmitting(true);
       try {
-        // Ensure all required fields are present in the form data
         const completeFormData = {
-          ...formData,
-          // Add any missing fields with default values
           name: formData.name.trim(),
           specialty: formData.specialty,
           color: formData.color || colorOptions[0],
           description: formData.description || ''
         };
         
-        console.log('Submitting team data:', completeFormData);
-        
-        let newTeam;
         if (editingTeam) {
-          // Update existing team
-          console.log('Updating team with ID:', editingTeam.id);
-          newTeam = await TeamService.updateTeam(editingTeam.id, user.company_id, completeFormData);
-          console.log('Team updated successfully:', newTeam);
-          
-          // Update the team in the current state immediately
-          setTeams(prevTeams => {
-            return prevTeams.map(team => 
-              team.id === editingTeam.id ? {
-                ...team,
-                ...completeFormData,
-                id: editingTeam.id,
-                company_id: user.company_id
-              } : team
-            );
-          });
+          await TeamService.updateTeam(editingTeam.id, user.company_id, completeFormData);
+          setTeams(prevTeams => 
+            prevTeams.map(team => 
+              team.id === editingTeam.id 
+                ? { ...team, ...completeFormData }
+                : team
+            )
+          );
         } else {
-          // Create new team
-          console.log('Creating new team for company ID:', user.company_id);
-          newTeam = await TeamService.createTeam(user.company_id, completeFormData);
-          console.log('Team created successfully:', newTeam);
-          
-          // If we got a response with the new team
+          const newTeam = await TeamService.createTeam(user.company_id, completeFormData);
           if (newTeam) {
-            // Add the new team to the current state immediately
             const newTeamWithDefaults = {
               ...completeFormData,
               id: newTeam.id || String(Math.random()),
@@ -382,14 +320,11 @@ const Teams: React.FC = () => {
               created_at: new Date().toISOString(),
               is_active: true
             };
-            
-            console.log('Adding new team to state:', newTeamWithDefaults);
             setTeams(prevTeams => [...prevTeams, newTeamWithDefaults]);
           }
         }
 
-        // Also reload teams from server to ensure we have the latest data
-        loadTeams();
+        await loadTeams();
         setShowCreateModal(false);
       } catch (error) {
         console.error('Error saving team:', error);
@@ -498,7 +433,6 @@ const Teams: React.FC = () => {
               />
             </div>
 
-            {/* Preview */}
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-sm font-medium text-gray-700 mb-2">Preview:</div>
               <div className="flex items-center">
@@ -546,7 +480,6 @@ const Teams: React.FC = () => {
     );
   };
 
-  // Team Details Modal
   const TeamDetailsModal: React.FC = () => {
     if (!showDetailsModal || !selectedTeam) return null;
 
@@ -566,7 +499,6 @@ const Teams: React.FC = () => {
           </div>
           
           <div className="p-6 space-y-6">
-            {/* Team Header */}
             <div className="flex items-center">
               <div 
                 className="w-16 h-16 rounded-lg flex items-center justify-center mr-4"
@@ -588,7 +520,6 @@ const Teams: React.FC = () => {
               </div>
             )}
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">3</div>
@@ -608,7 +539,6 @@ const Teams: React.FC = () => {
               </div>
             </div>
 
-            {/* Recent Projects */}
             <div>
               <h4 className="text-lg font-medium text-gray-900 mb-3">Recent Projects</h4>
               <div className="space-y-3">
@@ -642,7 +572,6 @@ const Teams: React.FC = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
               <button
                 onClick={() => {
@@ -661,9 +590,56 @@ const Teams: React.FC = () => {
     );
   };
 
+  const renderEmptyState = () => (
+    <div className="col-span-full text-center py-12">
+      <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+        <Users className="h-8 w-8 text-gray-400" />
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">No teams found</h3>
+      <p className="text-gray-600 mb-4">
+        {searchTerm
+          ? 'Try adjusting your search criteria'
+          : 'Get started by creating your first team'}
+      </p>
+      {!searchTerm && (
+        <button
+          onClick={handleCreateTeam}
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Create Your First Team
+        </button>
+      )}
+    </div>
+  );
+
+  const renderLoadingState = () => (
+    <div className="col-span-full text-center py-12">
+      <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center animate-pulse">
+        <Users className="h-8 w-8 text-gray-400" />
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">Loading teams...</h3>
+    </div>
+  );
+
+  const renderErrorState = () => (
+    <div className="col-span-full text-center py-12">
+      <div className="w-24 h-24 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+        <X className="h-8 w-8 text-red-400" />
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading teams</h3>
+      <p className="text-gray-600 mb-4">{error}</p>
+      <button
+        onClick={loadTeams}
+        className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+      >
+        Try Again
+      </button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
@@ -680,7 +656,6 @@ const Teams: React.FC = () => {
         </button>
       </div>
 
-      {/* Search */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -696,83 +671,20 @@ const Teams: React.FC = () => {
         </div>
       </div>
 
-      {/* Teams Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {console.log('Rendering teams grid with', filteredTeams.length, 'teams')}
-        {filteredTeams.length > 0 ? (
-          filteredTeams.map((team, index) => {
-            console.log('Rendering team card for', team.id, team.name, 'with color', team.color);
-            return <TeamCard key={team.id || index} team={team} />;
-          })
+        {loading ? (
+          renderLoadingState()
+        ) : error ? (
+          renderErrorState()
+        ) : filteredTeams.length === 0 ? (
+          renderEmptyState()
         ) : (
-          <div className="col-span-3 text-center py-12">
-            <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-              <Users className="h-8 w-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No teams found</h3>
-            <p className="text-gray-600 mb-4">
-              {searchTerm
-                ? 'Try adjusting your search criteria'
-                : 'Get started by creating your first team'}
-            </p>
-            {!searchTerm && (
-              <button
-                onClick={handleCreateTeam}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Team
-              </button>
-            )}
-          </div>
+          filteredTeams.map((team) => (
+            <TeamCard key={team.id} team={team} />
+          ))
         )}
       </div>
 
-      {loading ? (
-        <div className="text-center py-12">
-          <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center animate-pulse">
-            <Users className="h-8 w-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Loading teams...</h3>
-        </div>
-      ) : error ? (
-        <div className="text-center py-12">
-          <div className="w-24 h-24 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
-            <X className="h-8 w-8 text-red-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading teams</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={loadTeams}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-          >
-            Try Again
-          </button>
-        </div>
-      ) : filteredTeams.length === 0 && (
-        <div className="text-center py-12">
-          <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <Users className="h-8 w-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No teams found</h3>
-          <p className="text-gray-600 mb-4">
-            {searchTerm
-              ? 'Try adjusting your search criteria'
-              : 'Get started by creating your first team'}
-          </p>
-          {!searchTerm && (
-            <button
-              onClick={handleCreateTeam}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Your First Team
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Modals */}
       <TeamModal />
       <TeamDetailsModal />
     </div>
