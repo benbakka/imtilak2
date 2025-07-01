@@ -77,30 +77,47 @@ const Teams: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      console.log('Attempting to load teams for company ID:', user.company_id);
       
-      const teamsResponse = await TeamService.getAllActiveTeams(user.company_id);
-      console.log('Teams response:', teamsResponse);
+      // First, get all teams to have a complete list of team objects
+      const allTeamsResponse = await TeamService.getAllActiveTeams(user.company_id);
       
-      if (!Array.isArray(teamsResponse)) {
-        console.error('Expected array but got:', typeof teamsResponse);
-        setTeams([]);
-        setError('Received invalid data format from server');
+      // Create a map of team IDs to team objects for quick lookup
+      const teamMap = new Map<number, Team>();
+      allTeamsResponse.forEach(team => {
+        if (team && typeof team === 'object' && team.id) {
+          teamMap.set(Number(team.id), team);
+        }
+      });
+      
+      // Now get the paginated teams response
+      const teamsResponse = await TeamService.getTeams(user.company_id, 0, 100);
+
+      if (!teamsResponse.content) {
+        console.error('Invalid teams response format:', teamsResponse);
+        setError('Invalid response format from server');
         return;
       }
-      
-      if (teamsResponse.length === 0) {
-        console.log('No teams returned from server');
-        setTeams([]);
-        return;
-      }
-      
-      const normalizedTeams = teamsResponse.map(team => {
-        if (!team) return null;
+
+      const normalizedTeams = teamsResponse.content.map(team => {
+        // If team is a number (ID), look it up in our team map
+        if (typeof team === 'number') {
+          const fullTeam = teamMap.get(team);
+          if (fullTeam) {
+            return fullTeam;
+          }
+          console.warn(`Team with ID ${team} not found in the complete teams list`);
+          return null;
+        }
+        
+        // If team is not a proper object or missing name
+        if (!team || typeof team !== 'object' || !team.name) {
+          console.warn('Invalid team data found:', team);
+          return null;
+        }
         
         return {
           id: team.id || String(Math.random()),
-          name: team.name || 'Unnamed Team',
+          name: team.name,
           specialty: team.specialty || 'General',
           company_id: team.company_id || user.company_id,
           color: team.color || colorOptions[Math.floor(Math.random() * colorOptions.length)],
@@ -110,7 +127,6 @@ const Teams: React.FC = () => {
         } as Team;
       }).filter((team): team is Team => team !== null);
       
-      console.log('Total teams after normalization:', normalizedTeams.length);
       setTeams(normalizedTeams);
     } catch (error) {
       console.error('Error loading teams:', error);

@@ -28,7 +28,7 @@ export class TeamService {
   ): Promise<PaginatedResponse<Team>> {
     // The backend expects companyId as a Long, so ensure it's a number
     const params = {
-      companyId: Number(companyId),  // Convert string to number for backend Long type
+      companyId: Number(companyId),
       page: page.toString(),
       size: size.toString(),
       sortBy: sortBy,
@@ -40,7 +40,50 @@ export class TeamService {
     try {
       // Use the correct endpoint as defined in the backend TeamController
       const response = await apiClient.get<PaginatedResponse<Team>>('/teams', params);
-      console.log('TeamService.getTeams - Response:', response);
+      
+      // Process the response to handle potential issues with team data
+      if (response && response.content && Array.isArray(response.content)) {
+        // Check if any team entries are just numbers (IDs) instead of full objects
+        const teamIdsToFetch: number[] = [];
+        const teamIdPositions: Record<number, number> = {};
+        
+        // Identify which entries are just IDs and need to be fetched
+        response.content.forEach((team, index) => {
+          if (typeof team === 'number') {
+            teamIdsToFetch.push(team);
+            teamIdPositions[team] = index;
+          } else if (team && typeof team === 'object' && !team.name) {
+            console.warn('TeamService.getTeams - Found team object without name:', team);
+          }
+        });
+        
+        // If we found any team IDs, fetch the complete team objects
+        if (teamIdsToFetch.length > 0) {
+          console.log('TeamService.getTeams - Fetching complete team objects for IDs:', teamIdsToFetch);
+          
+          // Fetch each team by ID
+          const teamPromises = teamIdsToFetch.map(async (teamId) => {
+            try {
+              const teamData = await this.getTeam(String(teamId), companyId);
+              return { teamId, teamData };
+            } catch (error) {
+              console.error(`TeamService.getTeams - Error fetching team ${teamId}:`, error);
+              return { teamId, teamData: null };
+            }
+          });
+          
+          // Wait for all team fetches to complete
+          const fetchedTeams = await Promise.all(teamPromises);
+          
+          // Replace the team IDs with the fetched team objects
+          fetchedTeams.forEach(({ teamId, teamData }) => {
+            if (teamData && teamIdPositions[teamId] !== undefined) {
+              response.content[teamIdPositions[teamId]] = teamData;
+            }
+          });
+        }
+      }
+      
       return response;
     } catch (error) {
       console.error('TeamService.getTeams - Error:', error);
@@ -55,47 +98,26 @@ export class TeamService {
       type TeamResponse = Team[] | PaginatedResponse<Team> | Team | Record<string, any>;
       
       const response = await apiClient.get<TeamResponse>('/teams/all', { companyId: Number(companyId) });
-      console.log('TeamService.getAllActiveTeams - Raw response:', response);
-      console.log('TeamService.getAllActiveTeams - Response type:', typeof response);
       
-      // Handle different response formats
+      // Ensure the response is consistently handled
       let teamsData: Team[] = [];
-      
-      // Case 1: Response is an array of teams
-      if (Array.isArray(response)) {
-        console.log('TeamService.getAllActiveTeams - Response is an array with', response.length, 'items');
+
+      if (response && typeof response === 'object' && 'content' in response && Array.isArray((response as PaginatedResponse<Team>).content)) {
+        // Prioritize the 'content' property for paginated responses
+        teamsData = (response as PaginatedResponse<Team>).content;
+      } else if (Array.isArray(response)) {
+        // Handle cases where the response is a direct array of teams
         teamsData = response;
+      } else {
+        // If the response is not in a known format, log a warning and return an empty array
+        console.warn('TeamService.getAllActiveTeams - Unexpected response format:', response);
+        return [];
       }
-      // Case 2: Response is an object with a content property that is an array
-      else if (response && typeof response === 'object' && 'content' in response && Array.isArray((response as PaginatedResponse<Team>).content)) {
-        const paginatedResponse = response as PaginatedResponse<Team>;
-        console.log('TeamService.getAllActiveTeams - Response has content array with', paginatedResponse.content.length, 'items');
-        teamsData = paginatedResponse.content;
-      }
-      // Case 3: Response is a single team object
-      else if (response && typeof response === 'object' && 'id' in response) {
-        console.log('TeamService.getAllActiveTeams - Response is a single team object');
-        teamsData = [response as Team];
-      }
-      // Case 4: Response is an object with teams as properties
-      else if (response && typeof response === 'object') {
-        console.log('TeamService.getAllActiveTeams - Response is an object with keys:', Object.keys(response));
-        // Try to extract teams from the object
-        const possibleTeams = Object.values(response).filter(value => 
-          value && typeof value === 'object' && 'id' in value
-        );
-        if (possibleTeams.length > 0) {
-          console.log('TeamService.getAllActiveTeams - Extracted', possibleTeams.length, 'teams from object');
-          teamsData = possibleTeams as Team[];
-        }
-      }
-      
-      console.log('TeamService.getAllActiveTeams - Returning', teamsData.length, 'teams');
+
       return teamsData;
     } catch (error) {
       console.error('TeamService.getAllActiveTeams - Error:', error);
       // Return empty array instead of throwing to prevent app crashes
-      console.log('TeamService.getAllActiveTeams - Returning empty array due to error');
       return [];
     }
   }

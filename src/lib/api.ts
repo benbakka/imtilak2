@@ -130,7 +130,6 @@ class ApiClient {
     console.log(`API GET request to: ${this.baseURL}${url}`);
     const result = await this.request<T>(url, { method: 'GET' });
     console.log(`API GET response from: ${this.baseURL}${url}`, result);
-    console.log(`API GET response type: ${typeof result}`, Array.isArray(result) ? 'is array' : 'not array');
     return result;
   }
 
