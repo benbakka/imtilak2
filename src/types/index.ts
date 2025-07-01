@@ -37,6 +37,8 @@ export interface Project {
   created_at: string;
   description?: string;
   budget?: number;
+  unit_count?: number;
+  active_team_count?: number;
 }
 
 export interface Unit {
@@ -44,10 +46,10 @@ export interface Unit {
   project_id: string;
   name: string;
   type: 'villa' | 'apartment' | 'commercial';
-  floor?: string;
-  area?: number;
+  floor?: string | null;
+  area?: number | null;
   created_at: string;
-  description?: string;
+  description?: string | null;
   progress?: number;
   project?: Project;
 }

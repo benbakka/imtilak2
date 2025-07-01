@@ -5,6 +5,7 @@ import com.constructmanager.dto.ProjectSummaryDTO;
 import com.constructmanager.entity.Project;
 import com.constructmanager.repository.ProjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,13 +18,13 @@ import java.util.Optional;
 @Service
 @Transactional(readOnly = true)
 public class ProjectService {
-    
+
     @Autowired
     private ProjectRepository projectRepository;
-    
+
     @Autowired
     private ProjectMapper projectMapper;
-    
+
     /**
      * Get paginated project summaries for a company
      * Uses caching for better performance
@@ -32,7 +33,7 @@ public class ProjectService {
     public Page<ProjectSummaryDTO> getProjectSummaries(Long companyId, Pageable pageable) {
         return projectRepository.findProjectSummariesByCompanyId(companyId, pageable);
     }
-    
+
     /**
      * Get project summaries by status
      */
@@ -40,21 +41,21 @@ public class ProjectService {
     public Page<ProjectSummaryDTO> getProjectSummariesByStatus(Long companyId, Project.ProjectStatus status, Pageable pageable) {
         return projectRepository.findProjectSummariesByCompanyIdAndStatus(companyId, status, pageable);
     }
-    
+
     /**
      * Search projects by name or location
      */
     public Page<ProjectSummaryDTO> searchProjects(Long companyId, String searchTerm, Pageable pageable) {
         return projectRepository.searchProjectSummaries(companyId, searchTerm, pageable);
     }
-    
+
     /**
      * Get project summaries by date range
      */
     public Page<ProjectSummaryDTO> getProjectsByDateRange(Long companyId, LocalDate startDate, LocalDate endDate, Pageable pageable) {
         return projectRepository.findProjectSummariesByCompanyIdAndDateRange(companyId, startDate, endDate, pageable);
     }
-    
+
     /**
      * Get detailed project information
      */
@@ -63,20 +64,22 @@ public class ProjectService {
         return projectRepository.findByIdAndCompanyId(projectId, companyId)
                 .map(projectMapper::toDetailDTO);
     }
-    
+
     /**
      * Create new project
      */
     @Transactional
+    @CacheEvict(value = {"projectSummaries", "projectSummariesByStatus", "activeProjectsCount"}, allEntries = true)
     public ProjectDetailDTO createProject(Project project) {
         Project savedProject = projectRepository.save(project);
         return projectMapper.toDetailDTO(savedProject);
     }
-    
+
     /**
      * Update existing project
      */
     @Transactional
+    @CacheEvict(value = {"projectSummaries", "projectSummariesByStatus", "projectDetails", "activeProjectsCount"}, allEntries = true)
     public Optional<ProjectDetailDTO> updateProject(Long projectId, Long companyId, Project projectUpdates) {
         return projectRepository.findByIdAndCompanyId(projectId, companyId)
                 .map(existingProject -> {
@@ -88,16 +91,17 @@ public class ProjectService {
                     existingProject.setEndDate(projectUpdates.getEndDate());
                     existingProject.setStatus(projectUpdates.getStatus());
                     existingProject.setBudget(projectUpdates.getBudget());
-                    
+
                     Project savedProject = projectRepository.save(existingProject);
                     return projectMapper.toDetailDTO(savedProject);
                 });
     }
-    
+
     /**
      * Delete project
      */
     @Transactional
+    @CacheEvict(value = {"projectSummaries", "projectSummariesByStatus", "projectDetails", "activeProjectsCount"}, allEntries = true)
     public boolean deleteProject(Long projectId, Long companyId) {
         return projectRepository.findByIdAndCompanyId(projectId, companyId)
                 .map(project -> {
@@ -106,7 +110,7 @@ public class ProjectService {
                 })
                 .orElse(false);
     }
-    
+
     /**
      * Get active projects count for dashboard
      */
@@ -114,7 +118,7 @@ public class ProjectService {
     public Long getActiveProjectsCount(Long companyId) {
         return projectRepository.countActiveProjectsByCompanyId(companyId);
     }
-    
+
     /**
      * Get projects with delayed tasks
      */

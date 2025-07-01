@@ -72,63 +72,103 @@ const Dashboard: React.FC = () => {
   };
 
   const handleCreateUnit = () => {
+    // Only show the create unit modal if we have at least one project
+    if (projects.length === 0) {
+      alert('Please create a project first before adding units.');
+      return;
+    }
     setShowCreateUnitModal(true);
-  };
-
-  const handleManageTeams = () => {
-    navigate('/teams');
   };
 
   const handleSaveUnit = async (unitData: Partial<Unit>, useTemplate?: boolean, templateData?: any) => {
     try {
-      if (!user?.company_id || !projects.length) {
-        alert('Please select a project first');
+      if (!user?.company_id) {
+        alert('User authentication required. Please log in again.');
         return;
       }
 
-      const projectId = unitData.project_id || projects[0].id;
+      // Ensure we have a valid projectId
+      const projectId = unitData.project_id || projects[0]?.id;
+      if (!projectId) {
+        alert('No project selected. Please select a project first.');
+        return;
+      }
+
+      // Ensure all required fields are present and valid
+      if (!unitData.name || !unitData.type) {
+        alert('Unit name and type are required.');
+        return;
+      }
+
+      // Create a clean unit object without undefined values
+      const cleanUnitData = {
+        name: unitData.name,
+        type: unitData.type,
+        floor: unitData.type === 'apartment' ? unitData.floor || '' : undefined,
+        area: unitData.area ? Number(unitData.area) : undefined,
+        description: unitData.description || ''
+      };
+
+      console.log('Creating unit with data:', { projectId, companyId: user.company_id, unitData: cleanUnitData });
       
-      await UnitService.createUnit(projectId, user.company_id, {
-        name: unitData.name!,
-        type: unitData.type!,
-        floor: unitData.floor,
-        area: unitData.area,
-        description: unitData.description
-      });
+      await UnitService.createUnit(projectId, user.company_id, cleanUnitData);
 
       alert(`Unit "${unitData.name}" created successfully!`);
       setShowCreateUnitModal(false);
-      navigate('/projects');
+      navigate('/projects', { state: { selectedProjectId: projectId } });
     } catch (error) {
       console.error('Error creating unit:', error);
-      alert('Failed to create unit. Please try again.');
+      if (error instanceof Error) {
+        alert(`Failed to create unit: ${error.message}`);
+      } else {
+        alert('Failed to create unit. Please try again.');
+      }
     }
   };
 
   const handleCloneUnit = async (newUnitData: Partial<Unit>) => {
     try {
-      if (!user?.company_id) return;
-
-      const projectId = newUnitData.project_id || projects[0]?.id;
-      if (!projectId) {
-        alert('Please select a project first');
+      if (!user?.company_id) {
+        alert('User authentication required. Please log in again.');
         return;
       }
 
-      await UnitService.createUnit(projectId, user.company_id, {
-        name: newUnitData.name!,
-        type: newUnitData.type!,
-        floor: newUnitData.floor,
-        area: newUnitData.area,
-        description: newUnitData.description
-      });
+      // Ensure we have a valid projectId
+      const projectId = newUnitData.project_id || projects[0]?.id;
+      if (!projectId) {
+        alert('No project selected. Please select a project first.');
+        return;
+      }
+
+      // Ensure all required fields are present
+      if (!newUnitData.name || !newUnitData.type) {
+        alert('Unit name and type are required.');
+        return;
+      }
+
+      // Create a clean unit object without undefined values
+      const cleanUnitData = {
+        name: newUnitData.name,
+        type: newUnitData.type,
+        floor: newUnitData.type === 'apartment' ? newUnitData.floor || '' : undefined,
+        area: newUnitData.area ? Number(newUnitData.area) : undefined,
+        description: newUnitData.description || ''
+      };
+
+      console.log('Cloning unit with data:', { projectId, companyId: user.company_id, unitData: cleanUnitData });
+      
+      await UnitService.createUnit(projectId, user.company_id, cleanUnitData);
 
       alert(`Unit "${newUnitData.name}" cloned successfully!`);
       setShowCreateUnitModal(false);
-      navigate('/projects');
+      navigate('/projects', { state: { selectedProjectId: projectId } });
     } catch (error) {
       console.error('Error cloning unit:', error);
-      alert('Failed to clone unit. Please try again.');
+      if (error instanceof Error) {
+        alert(`Failed to clone unit: ${error.message}`);
+      } else {
+        alert('Failed to clone unit. Please try again.');
+      }
     }
   };
 
@@ -241,9 +281,7 @@ const Dashboard: React.FC = () => {
                 }`}
                 placeholder="e.g., Résidence Azure"
               />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-              )}
+              {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
             </div>
             
             <div>
@@ -260,9 +298,7 @@ const Dashboard: React.FC = () => {
                 }`}
                 placeholder="e.g., Casablanca"
               />
-              {errors.location && (
-                <p className="mt-1 text-sm text-red-600">{errors.location}</p>
-              )}
+              {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location}</p>}
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -279,9 +315,7 @@ const Dashboard: React.FC = () => {
                     errors.startDate ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
-                {errors.startDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
-                )}
+                {errors.startDate && <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>}
               </div>
               
               <div>
@@ -297,27 +331,24 @@ const Dashboard: React.FC = () => {
                     errors.endDate ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
-                {errors.endDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
-                )}
+                {errors.endDate && <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>}
               </div>
             </div>
-            
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </button>
+
+            <div>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 disabled={isSubmitting}
+                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
-                {isSubmitting ? 'Creating...' : 'Create Project'}
+                {isSubmitting ? (
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Creating...
+                  </div>
+                ) : (
+                  'Create Project'
+                )}
               </button>
             </div>
           </form>
@@ -394,11 +425,7 @@ const Dashboard: React.FC = () => {
             projects.map((project) => (
               <ProjectCard 
                 key={project.id} 
-                project={{
-                  ...project,
-                  active_teams: 3, // Mock data for demo
-                  delayed_categories: project.id === '1' ? 2 : 0 // Mock data for demo
-                }}
+                project={project}
                 onClick={() => handleProjectClick(project.id)}
               />
             ))
@@ -438,7 +465,7 @@ const Dashboard: React.FC = () => {
             <span className="text-gray-700 font-medium group-hover:text-green-700">Add New Unit</span>
           </button>
           <button 
-            onClick={handleManageTeams}
+            onClick={() => navigate('/teams')}
             className="flex items-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors group"
           >
             <Users className="h-6 w-6 text-orange-600 mr-3 group-hover:scale-110 transition-transform" />

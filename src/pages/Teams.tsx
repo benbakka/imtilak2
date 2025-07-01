@@ -229,21 +229,6 @@ const Teams: React.FC = () => {
           </div>
         </div>
         
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Active Projects</span>
-            <span className="font-medium text-gray-900">3</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Tasks in Progress</span>
-            <span className="font-medium text-gray-900">12</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Completion Rate</span>
-            <span className="font-medium text-green-600">85%</span>
-          </div>
-        </div>
-        
         <div className="mt-4 pt-4 border-t border-gray-200">
           <button 
             onClick={() => handleViewDetails(team)}
@@ -535,58 +520,6 @@ const Teams: React.FC = () => {
                 <p className="text-gray-600">{selectedTeam.description}</p>
               </div>
             )}
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">3</div>
-                <div className="text-sm text-blue-600">Active Projects</div>
-              </div>
-              <div className="bg-green-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">12</div>
-                <div className="text-sm text-green-600">Tasks in Progress</div>
-              </div>
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-yellow-600">45</div>
-                <div className="text-sm text-yellow-600">Completed Tasks</div>
-              </div>
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">85%</div>
-                <div className="text-sm text-purple-600">Success Rate</div>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-lg font-medium text-gray-900 mb-3">Recent Projects</h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">Résidence Azure</div>
-                    <div className="text-sm text-gray-600">Fondation work</div>
-                  </div>
-                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                    Completed
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">Villa Moderne</div>
-                    <div className="text-sm text-gray-600">Electrical installation</div>
-                  </div>
-                  <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">
-                    In Progress
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">Complexe Commercial</div>
-                    <div className="text-sm text-gray-600">Plumbing work</div>
-                  </div>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
-                    Scheduled
-                  </span>
-                </div>
-              </div>
-            </div>
 
             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
               <button

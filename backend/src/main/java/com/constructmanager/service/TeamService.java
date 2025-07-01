@@ -5,6 +5,7 @@ import com.constructmanager.entity.Team;
 import com.constructmanager.repository.CompanyRepository;
 import com.constructmanager.repository.TeamRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,16 +18,16 @@ import java.util.Optional;
 @Service
 @Transactional(readOnly = true)
 public class TeamService {
-    
+
     @Autowired
     private TeamRepository teamRepository;
-    
+
     @Autowired
     private CompanyRepository companyRepository;
-    
+
     @Autowired
     private TeamMapper teamMapper;
-    
+
     /**
      * Get paginated teams for a company
      */
@@ -34,7 +35,7 @@ public class TeamService {
     public Page<Team> getTeams(Long companyId, Pageable pageable) {
         return teamRepository.findByCompanyIdAndIsActiveTrueOrderByNameAsc(companyId, pageable);
     }
-    
+
     /**
      * Get all active teams for a company (for dropdowns)
      */
@@ -42,22 +43,22 @@ public class TeamService {
     public List<Team> getAllActiveTeams(Long companyId) {
         return teamRepository.findByCompanyIdAndIsActiveTrueOrderByNameAsc(companyId);
     }
-    
+
     /**
      * Search teams by name or specialty
      */
     public Page<Team> searchTeams(Long companyId, String searchTerm, Pageable pageable) {
         return teamRepository.searchTeams(companyId, searchTerm, pageable);
     }
-    
+
     /**
      * Get teams by specialty
      */
     public Page<Team> getTeamsBySpecialty(Long companyId, String specialty, Pageable pageable) {
         return teamRepository.findByCompanyIdAndSpecialtyContainingIgnoreCaseAndIsActiveTrueOrderByNameAsc(
-            companyId, specialty, pageable);
+                companyId, specialty, pageable);
     }
-    
+
     /**
      * Get detailed team information
      */
@@ -66,11 +67,12 @@ public class TeamService {
         return teamRepository.findByIdAndCompanyId(teamId, companyId)
                 .map(teamMapper::toDetailDTO);
     }
-    
+
     /**
      * Create new team
      */
     @Transactional
+    @CacheEvict(value = "teams", allEntries = true)
     public Optional<TeamDetailDTO> createTeam(Long companyId, TeamCreateDTO teamCreateDTO) {
         return companyRepository.findById(companyId)
                 .map(company -> {
@@ -80,11 +82,12 @@ public class TeamService {
                     return teamMapper.toDetailDTO(savedTeam);
                 });
     }
-    
+
     /**
      * Update existing team
      */
     @Transactional
+    @CacheEvict(value = "teams", allEntries = true)
     public Optional<TeamDetailDTO> updateTeam(Long teamId, Long companyId, TeamUpdateDTO teamUpdateDTO) {
         return teamRepository.findByIdAndCompanyId(teamId, companyId)
                 .map(existingTeam -> {
@@ -93,11 +96,12 @@ public class TeamService {
                     return teamMapper.toDetailDTO(savedTeam);
                 });
     }
-    
+
     /**
      * Delete team (soft delete by setting isActive to false)
      */
     @Transactional
+    @CacheEvict(value = "teams", allEntries = true)
     public boolean deleteTeam(Long teamId, Long companyId) {
         return teamRepository.findByIdAndCompanyId(teamId, companyId)
                 .map(team -> {
@@ -107,7 +111,7 @@ public class TeamService {
                 })
                 .orElse(false);
     }
-    
+
     /**
      * Count active teams for dashboard
      */
@@ -115,14 +119,14 @@ public class TeamService {
     public Long getActiveTeamsCount(Long companyId) {
         return teamRepository.countByCompanyIdAndIsActiveTrue(companyId);
     }
-    
+
     /**
      * Get teams working on a specific project
      */
     public List<Team> getTeamsByProject(Long projectId) {
         return teamRepository.findTeamsByProjectId(projectId);
     }
-    
+
     /**
      * Get team performance metrics
      */

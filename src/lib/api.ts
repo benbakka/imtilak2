@@ -68,7 +68,19 @@ class ApiClient {
         try {
           const errorData = await response.json();
           console.error('Error response data:', errorData);
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+          
+          // Handle different error formats
+          if (errorData.message) {
+            throw new Error(errorData.message);
+          } else if (typeof errorData === 'object' && Object.keys(errorData).length > 0) {
+            // Handle validation errors that return a map of field errors
+            const errorMessage = Object.entries(errorData)
+              .map(([field, message]) => `${field}: ${message}`)
+              .join(', ');
+            throw new Error(errorMessage);
+          } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
         } catch (jsonError) {
           console.error('Could not parse error response as JSON:', jsonError);
           throw new Error(`HTTP error! status: ${response.status}, statusText: ${response.statusText}`);

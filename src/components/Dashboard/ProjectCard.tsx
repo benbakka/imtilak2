@@ -3,10 +3,7 @@ import { Calendar, MapPin, Users, AlertTriangle, Home } from 'lucide-react';
 import { Project } from '../../types';
 
 interface ProjectCardProps {
-  project: Project & {
-    active_teams?: number;
-    delayed_categories?: number;
-  };
+  project: Project;
   onClick?: () => void;
 }
 
@@ -44,11 +41,6 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
             </span>
           </div>
         </div>
-        {project.delayed_categories && project.delayed_categories > 0 && (
-          <div className="flex items-center text-red-600">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
-        )}
       </div>
 
       <div className="mb-4">
@@ -71,18 +63,9 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
         </div>
         <div className="flex items-center text-gray-600">
           <Users className="h-4 w-4 mr-1" />
-          {project.active_teams || 0} teams
+          {project.active_team_count || 0} teams
         </div>
       </div>
-
-      {project.delayed_categories && project.delayed_categories > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-200">
-          <div className="flex items-center text-red-600 text-sm">
-            <AlertTriangle className="h-4 w-4 mr-1" />
-            {project.delayed_categories} delayed categories
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -16,8 +16,7 @@ export interface ProjectCreateRequest {
 
 export interface ProjectUpdateRequest extends ProjectCreateRequest {
   status?: Project['status'];
-  progress?: number;
-  units?: any[];
+  progressPercentage?: number;
 }
 
 export interface ProjectFilters {
@@ -120,7 +119,7 @@ export class ProjectService {
       },
       // Convert status to uppercase to match backend enum values
       status: projectData.status ? projectData.status.toUpperCase() : undefined,
-      units: projectData.units || [] // Initialize units array to avoid null
+      units: [] // Initialize units array to avoid null
     };
     
     console.log('Sending update project data:', JSON.stringify(projectWithCompany));

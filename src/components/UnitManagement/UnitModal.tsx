@@ -13,7 +13,7 @@ interface UnitModalProps {
   unit?: Unit;
   availableUnits?: Unit[]; // For cloning
   availableTemplates?: UnitTemplate[]; // For templates
-    onCloneUnit?: (newUnitData: Partial<Unit>) => void;
+  onCloneUnit?: (newUnitData: Partial<Unit>) => void;
 }
 
 const UnitModal: React.FC<UnitModalProps> = ({
@@ -125,16 +125,40 @@ const UnitModal: React.FC<UnitModalProps> = ({
       return;
     }
 
-    const unitData = {
-      ...formData,
+    // Ensure projectId is valid
+    if (!projectId) {
+      alert('No project selected. Please select a project first.');
+      return;
+    }
+
+    // Prepare unit data with proper handling of optional fields
+    const unitData: Partial<Unit> = {
+      name: formData.name.trim(),
+      type: formData.type,
       project_id: projectId,
-      area: formData.area ? Number(formData.area) : undefined,
-      floor: formData.type === 'apartment' ? formData.floor : undefined,
       id: unit?.id
     };
 
+    // Handle optional fields properly to avoid undefined values
+    // For floor: only include for apartments, otherwise set to null
+    if (formData.type === 'apartment') {
+      unitData.floor = formData.floor.trim() || null;
+    } else {
+      unitData.floor = null;
+    }
+
+    // For area: convert to number if valid, otherwise set to null
+    if (formData.area && !isNaN(Number(formData.area)) && Number(formData.area) > 0) {
+      unitData.area = Number(formData.area);
+    } else {
+      unitData.area = null;
+    }
+
+    // For description: use empty string if not provided
+    unitData.description = formData.description.trim() || null;
+
     if (creationMode === 'clone' && onCloneUnit) {
-            onCloneUnit(unitData);
+      onCloneUnit(unitData);
     } else if (creationMode === 'template') {
       const template = templates.find(t => t.id === selectedTemplate) || 
                       availableTemplates.find(t => t.id === selectedTemplate);
