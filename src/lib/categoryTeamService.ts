@@ -1,16 +1,20 @@
+// src/lib/categoryTeamService.ts
 import { CategoryTeam } from '../types';
 import { apiClient, PaginatedResponse } from './api';
 
+// Define the backend's expected enum values as a union type
+export type BackendTaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'DELAYED';
+
 export interface CategoryTeamCreateRequest {
   teamId: string;
-  status?: CategoryTeam['status'];
+  status?: BackendTaskStatus; // Use BackendTaskStatus here
   receptionStatus?: boolean;
   paymentStatus?: boolean;
   notes?: string;
 }
 
 export interface CategoryTeamUpdateRequest {
-  status?: CategoryTeam['status'];
+  status?: BackendTaskStatus; // Use BackendTaskStatus here
   receptionStatus?: boolean;
   paymentStatus?: boolean;
   notes?: string;
@@ -19,9 +23,8 @@ export interface CategoryTeamUpdateRequest {
 
 export class CategoryTeamService {
   static async getCategoryTeamsByCategory(categoryId: string): Promise<CategoryTeam[]> {
-    return apiClient.get<CategoryTeam[]>('/category-teams', { 
-      params: { categoryId: categoryId } 
-    });
+    // Correctly pass categoryId as a direct parameter
+    return apiClient.get<CategoryTeam[]>('/category-teams', { categoryId: categoryId });
   }
 
   static async getCategoryTeamsByTeam(

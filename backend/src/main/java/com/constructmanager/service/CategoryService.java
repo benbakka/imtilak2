@@ -1,3 +1,4 @@
+// backend/src/main/java/com/constructmanager/service/CategoryService.java
 package com.constructmanager.service;
 
 import com.constructmanager.dto.*;
@@ -5,6 +6,7 @@ import com.constructmanager.entity.Category;
 import com.constructmanager.repository.CategoryRepository;
 import com.constructmanager.repository.UnitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict; // Import CacheEvict
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,23 +21,23 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class CategoryService {
-    
+
     @Autowired
     private CategoryRepository categoryRepository;
-    
+
     @Autowired
     private UnitRepository unitRepository;
-    
+
     @Autowired
     private CategoryMapper categoryMapper;
-    
+
     /**
      * Get categories by unit with pagination
      */
     public Page<Category> getCategoriesByUnit(Long unitId, Pageable pageable) {
         return categoryRepository.findByUnitIdOrderByOrderSequenceAsc(unitId, pageable);
     }
-    
+
     /**
      * Get all categories by unit (for detailed views)
      */
@@ -46,7 +48,7 @@ public class CategoryService {
                 .map(categoryMapper::toDetailDTO)
                 .collect(Collectors.toList());
     }
-    
+
     /**
      * Get detailed category information
      */
@@ -55,32 +57,34 @@ public class CategoryService {
         return categoryRepository.findByIdAndUnitId(categoryId, unitId)
                 .map(categoryMapper::toDetailDTO);
     }
-    
+
     /**
      * Create new category
      */
     @Transactional
+    @CacheEvict(value = "categoryDetails", key = "#unitId") // Evict cache for this unit
     public Optional<CategoryDetailDTO> createCategory(Long unitId, Long projectId, CategoryCreateDTO categoryCreateDTO) {
         return unitRepository.findByIdAndProjectId(unitId, projectId)
                 .map(unit -> {
                     Category category = categoryMapper.toEntity(categoryCreateDTO);
                     category.setUnit(unit);
-                    
+
                     // Set order sequence if not provided
                     if (category.getOrderSequence() == null) {
                         Integer nextOrder = categoryRepository.getNextOrderSequence(unitId);
                         category.setOrderSequence(nextOrder);
                     }
-                    
+
                     Category savedCategory = categoryRepository.save(category);
                     return categoryMapper.toDetailDTO(savedCategory);
                 });
     }
-    
+
     /**
      * Update existing category
      */
     @Transactional
+    @CacheEvict(value = "categoryDetails", key = "#unitId") // Evict cache for this unit
     public Optional<CategoryDetailDTO> updateCategory(Long categoryId, Long unitId, CategoryUpdateDTO categoryUpdateDTO) {
         return categoryRepository.findByIdAndUnitId(categoryId, unitId)
                 .map(existingCategory -> {
@@ -89,11 +93,12 @@ public class CategoryService {
                     return categoryMapper.toDetailDTO(savedCategory);
                 });
     }
-    
+
     /**
      * Delete category
      */
     @Transactional
+    @CacheEvict(value = "categoryDetails", key = "#unitId") // Evict cache for this unit
     public boolean deleteCategory(Long categoryId, Long unitId) {
         return categoryRepository.findByIdAndUnitId(categoryId, unitId)
                 .map(category -> {
@@ -102,14 +107,14 @@ public class CategoryService {
                 })
                 .orElse(false);
     }
-    
+
     /**
      * Get categories with delayed tasks
      */
     public Page<Category> getCategoriesWithDelayedTasks(Long companyId, Pageable pageable) {
         return categoryRepository.findCategoriesWithDelayedTasks(companyId, pageable);
     }
-    
+
     /**
      * Get categories starting soon
      */
@@ -118,7 +123,7 @@ public class CategoryService {
         LocalDate futureDate = today.plusDays(daysAhead);
         return categoryRepository.findCategoriesStartingSoon(companyId, today, futureDate, pageable);
     }
-    
+
     /**
      * Get overdue categories
      */
@@ -126,7 +131,7 @@ public class CategoryService {
         LocalDate today = LocalDate.now();
         return categoryRepository.findOverdueCategories(companyId, today, pageable);
     }
-    
+
     /**
      * Count categories by unit
      */

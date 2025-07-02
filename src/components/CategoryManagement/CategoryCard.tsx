@@ -59,13 +59,19 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
         
         <div className="flex space-x-2">
           <button
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
           >
             <Edit className="h-4 w-4" />
           </button>
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
           >
             <Trash2 className="h-4 w-4" />

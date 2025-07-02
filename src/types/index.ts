@@ -65,6 +65,7 @@ export interface Category {
   description?: string;
   progress?: number;
   unit?: Unit;
+  categoryTeams?: CategoryTeam[];
 }
 
 export interface Team {

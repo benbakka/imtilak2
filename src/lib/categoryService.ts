@@ -15,7 +15,15 @@ export interface CategoryUpdateRequest extends CategoryCreateRequest {
 
 export class CategoryService {
   static async getCategories(unitId: string): Promise<Category[]> {
-    return apiClient.get<Category[]>('/categories', { unitId: unitId });
+    console.log(`CategoryService.getCategories - Fetching categories for unit ID: ${unitId}`);
+    try {
+      const response = await apiClient.get<Category[]>('/categories', { unitId: unitId });
+      console.log('CategoryService.getCategories - Response:', response);
+      return response;
+    } catch (error) {
+      console.error(`CategoryService.getCategories - Error fetching categories for unit ${unitId}:`, error);
+      throw error;
+    }
   }
 
   static async getCategory(id: string, unitId: string): Promise<Category> {
@@ -27,7 +35,17 @@ export class CategoryService {
     projectId: string,
     categoryData: CategoryCreateRequest
   ): Promise<Category> {
-    return apiClient.post<Category>(`/categories?unitId=${unitId}&projectId=${projectId}`, categoryData);
+    console.log(`CategoryService.createCategory - Creating category for unit ID: ${unitId}, project ID: ${projectId}`);
+    console.log('CategoryService.createCategory - Category data:', categoryData);
+    
+    try {
+      const response = await apiClient.post<Category>(`/categories?unitId=${unitId}&projectId=${projectId}`, categoryData);
+      console.log('CategoryService.createCategory - Response:', response);
+      return response;
+    } catch (error) {
+      console.error(`CategoryService.createCategory - Error creating category for unit ${unitId}:`, error);
+      throw error;
+    }
   }
 
   static async updateCategory(

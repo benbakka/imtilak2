@@ -1,15 +1,24 @@
+// src/lib/unitService.ts
 import { Unit } from '../types';
 import { apiClient, PaginatedResponse } from './api';
 
+// Define the backend's expected enum values as a union type
+export type BackendUnitType = 'VILLA' | 'APARTMENT' | 'COMMERCIAL';
+
 export interface UnitCreateRequest {
   name: string;
-  type: Unit['type'];
+  type: BackendUnitType; // Use BackendUnitType here
   floor?: string | null;
   area?: number | null;
   description?: string | null;
 }
 
-export interface UnitUpdateRequest extends UnitCreateRequest {
+export interface UnitUpdateRequest {
+  name?: string;
+  type?: BackendUnitType; // Use BackendUnitType here
+  floor?: string | null;
+  area?: number | null;
+  description?: string | null;
   progressPercentage?: number;
 }
 
@@ -66,7 +75,41 @@ export class UnitService {
   ): Promise<Unit> {
     try {
       console.log('Creating unit with data:', { projectId, companyId, unitData });
-      const response = await apiClient.post<Unit>(`/units?projectId=${projectId}&companyId=${companyId}`, unitData);
+      
+      // Ensure all parameters are properly formatted
+      const formattedProjectId = String(projectId).trim();
+      const formattedCompanyId = String(companyId).trim();
+      
+      if (!formattedProjectId) {
+        throw new Error('Project ID is required and cannot be empty');
+      }
+      
+      if (!formattedCompanyId) {
+        throw new Error('Company ID is required and cannot be empty');
+      }
+      
+      // Ensure the unit data is properly formatted
+      const formattedUnitData = {
+        name: unitData.name.trim(),
+        // Convert type to uppercase and assert to BackendUnitType
+        type: unitData.type.toUpperCase() as BackendUnitType,
+        floor: unitData.floor === null || unitData.floor === undefined ? null : String(unitData.floor).trim(),
+        area: unitData.area === null || unitData.area === undefined ? null : Number(unitData.area),
+        description: unitData.description === null || unitData.description === undefined ? null : String(unitData.description).trim()
+      };
+      
+      // Log the formatted data
+      console.log('Formatted unit creation data:', {
+        projectId: formattedProjectId,
+        companyId: formattedCompanyId,
+        unitData: formattedUnitData
+      });
+      
+      const response = await apiClient.post<Unit>(
+        `/units?projectId=${encodeURIComponent(formattedProjectId)}&companyId=${encodeURIComponent(formattedCompanyId)}`, 
+        formattedUnitData
+      );
+      
       console.log('Unit created successfully:', response);
       return response;
     } catch (error) {
@@ -82,7 +125,16 @@ export class UnitService {
   ): Promise<Unit> {
     try {
       console.log(`Updating unit with ID: ${id} for project: ${projectId}`, unitData);
-      const response = await apiClient.put<Unit>(`/units/${id}?projectId=${projectId}`, unitData);
+      
+      // Create a copy of unitData to avoid modifying the original
+      const formattedUnitData = { ...unitData };
+      
+      // Convert type to uppercase if present and assert to BackendUnitType
+      if (formattedUnitData.type) {
+        formattedUnitData.type = formattedUnitData.type.toUpperCase() as BackendUnitType;
+      }
+      
+      const response = await apiClient.put<Unit>(`/units/${id}?projectId=${projectId}`, formattedUnitData);
       console.log('Unit updated successfully:', response);
       return response;
     } catch (error) {
@@ -107,6 +159,8 @@ export class UnitService {
   }
 
   static async countUnitsByType(projectId: string, type: Unit['type']): Promise<number> {
-    return apiClient.get<number>('/units/count/type', { projectId: projectId, type: type });
+    // Convert type to uppercase and assert to BackendUnitType
+    const upperCaseType = type.toUpperCase() as BackendUnitType;
+    return apiClient.get<number>('/units/count/type', { projectId: projectId, type: upperCaseType });
   }
 }

@@ -16,9 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 @Transactional(readOnly = true)
 public class UnitService {
+
+    private static final Logger logger = LoggerFactory.getLogger(UnitService.class);
 
     @Autowired
     private UnitRepository unitRepository;
@@ -66,7 +71,12 @@ public class UnitService {
     @Transactional
     @CacheEvict(value = "unitSummaries", allEntries = true)
     public Optional<UnitDetailDTO> createUnit(Long projectId, Long companyId, UnitCreateDTO unitCreateDTO) {
-        return projectRepository.findByIdAndCompanyId(projectId, companyId)
+        logger.info("UnitService: createUnit called with projectId = {}, companyId = {}", projectId, companyId);
+
+        Optional<Project> projectOptional = projectRepository.findByIdAndCompanyId(projectId, companyId);
+        logger.info("UnitService: projectRepository.findByIdAndCompanyId returned present = {}", projectOptional.isPresent());
+
+        return projectOptional
                 .map(project -> {
                     Unit unit = unitMapper.toEntity(unitCreateDTO);
                     unit.setProject(project);
@@ -74,6 +84,7 @@ public class UnitService {
                     return unitMapper.toDetailDTO(savedUnit);
                 })
                 .or(() -> {
+                    logger.warn("UnitService: Project not found with ID: {} for company ID: {}", projectId, companyId);
                     throw new IllegalArgumentException("Project not found with ID: " + projectId + " for company ID: " + companyId);
                 });
     }

@@ -55,6 +55,7 @@ class ApiClient {
       
       if (!response.ok) {
         console.error(`API request failed: ${url}, status: ${response.status}`);
+        console.error('Request options:', config);
         
         if (response.status === 401 && !endpoint.includes('/auth/refresh')) {
           console.log('Authentication error, attempting to refresh token...');
@@ -146,21 +147,30 @@ class ApiClient {
   }
 
   async post<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+    console.log(`API POST request to: ${this.baseURL}${endpoint}`, data);
+    const result = await this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
     });
+    console.log(`API POST response from: ${this.baseURL}${endpoint}`, result);
+    return result;
   }
 
   async put<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+    console.log(`API PUT request to: ${this.baseURL}${endpoint}`, data);
+    const result = await this.request<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
     });
+    console.log(`API PUT response from: ${this.baseURL}${endpoint}`, result);
+    return result;
   }
 
   async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+    console.log(`API DELETE request to: ${this.baseURL}${endpoint}`);
+    const result = await this.request<T>(endpoint, { method: 'DELETE' });
+    console.log(`API DELETE response from: ${this.baseURL}${endpoint}`, result);
+    return result;
   }
 
   private async refreshToken(): Promise<boolean> {

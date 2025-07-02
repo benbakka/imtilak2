@@ -60,13 +60,19 @@ const UnitCard: React.FC<UnitCardProps> = ({
         
         <div className="flex space-x-1">
           <button
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
           >
             <Edit className="h-4 w-4" />
           </button>
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
           >
             <Trash2 className="h-4 w-4" />
@@ -78,7 +84,10 @@ const UnitCard: React.FC<UnitCardProps> = ({
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-gray-700">Categories</span>
           <button
-            onClick={onAddCategory}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddCategory();
+            }}
             className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200"
           >
             <Plus className="h-3 w-3 mr-1" />

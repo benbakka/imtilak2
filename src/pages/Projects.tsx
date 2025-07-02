@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Filter, ChevronRight, ChevronDown, Home, MapPin, Calendar, Users, Edit, Trash2, X, Save } from 'lucide-react';
+import { Building2, Plus, Search, Filter, ChevronRight, ChevronDown, Home, MapPin, Calendar, Users, Edit, Trash2, X, Save, LayoutGrid, List } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, Unit, Category, CategoryTeam, Team, UnitTemplate } from '../types';
 import { ProjectService, ProjectCreateRequest, ProjectUpdateRequest } from '../lib/projectService';
-import { UnitService } from '../lib/unitService';
+import { UnitService, BackendUnitType } from '../lib/unitService';
 import { CategoryService } from '../lib/categoryService';
 import { TeamService } from '../lib/teamService';
-import { CategoryTeamService } from '../lib/categoryTeamService';
+import { CategoryTeamService, BackendTaskStatus } from '../lib/categoryTeamService';
 import { TemplateService } from '../lib/templateService';
 import UnitModal from '../components/UnitManagement/UnitModal';
 import UnitCard from '../components/UnitManagement/UnitCard';
@@ -39,6 +39,7 @@ const Projects: React.FC = () => {
   // UI states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     projects: true,
     units: false,
@@ -198,9 +199,11 @@ const Projects: React.FC = () => {
       );
       
       setCategoryTeams(enhancedCategoryTeams);
+      return enhancedCategoryTeams;
     } catch (error) {
       console.error(`Error loading category teams for category ${categoryId}:`, error);
       setCategoryTeams([]);
+      return [];
     }
   };
   
@@ -266,11 +269,17 @@ const Projects: React.FC = () => {
     }
   };
   
-  const handleSelectCategory = (category: Category) => {
+  const handleSelectCategory = async (category: Category) => {
     setSelectedCategory(category);
     
     // Load category teams for this category
-    loadCategoryTeams(category.id);
+    const teams = await loadCategoryTeams(category.id);
+    
+    // Update the selected category with the teams
+    setSelectedCategory({
+      ...category,
+      categoryTeams: teams
+    });
     
     // Expand all sections
     setExpandedSections({
@@ -394,10 +403,13 @@ const Projects: React.FC = () => {
     }
     
     try {
+      // Convert frontend unit type to backend enum format (UPPERCASE)
+      const backendUnitType = unitData.type?.toUpperCase() as BackendUnitType;
+      
       // Prepare clean unit data without undefined values
       const cleanUnitData = {
         name: unitData.name!,
-        type: unitData.type!,
+        type: backendUnitType,
         floor: unitData.floor === undefined ? null : unitData.floor,
         area: unitData.area === undefined ? null : unitData.area,
         description: unitData.description === undefined ? null : unitData.description
@@ -454,10 +466,13 @@ const Projects: React.FC = () => {
     }
     
     try {
+      // Convert frontend unit type to backend enum format (UPPERCASE)
+      const backendUnitType = newUnitData.type?.toUpperCase() as BackendUnitType;
+      
       // Prepare clean unit data without undefined values
       const cleanUnitData = {
         name: newUnitData.name!,
-        type: newUnitData.type!,
+        type: backendUnitType,
         floor: newUnitData.floor === undefined ? null : newUnitData.floor,
         area: newUnitData.area === undefined ? null : newUnitData.area,
         description: newUnitData.description === undefined ? null : newUnitData.description
@@ -510,23 +525,29 @@ const Projects: React.FC = () => {
         // Update category teams
         for (const teamAssignment of teamAssignments) {
           if (teamAssignment.id) {
+            // Convert frontend status to backend enum format (UPPERCASE with underscores)
+            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
+            
             // Update existing team assignment
             await CategoryTeamService.updateCategoryTeam(
               teamAssignment.id,
               {
-                status: teamAssignment.status,
+                status: backendStatus,
                 receptionStatus: teamAssignment.reception_status,
                 paymentStatus: teamAssignment.payment_status,
                 notes: teamAssignment.notes
               }
             );
           } else if (teamAssignment.team_id) {
+            // Convert frontend status to backend enum format (UPPERCASE with underscores)
+            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
+            
             // Create new team assignment
             await CategoryTeamService.createCategoryTeam(
               updatedCategory.id,
               {
                 teamId: teamAssignment.team_id,
-                status: teamAssignment.status,
+                status: backendStatus,
                 receptionStatus: teamAssignment.reception_status,
                 paymentStatus: teamAssignment.payment_status,
                 notes: teamAssignment.notes
@@ -560,11 +581,14 @@ const Projects: React.FC = () => {
         // Create team assignments
         for (const teamAssignment of teamAssignments) {
           if (teamAssignment.team_id) {
+            // Convert frontend status to backend enum format (UPPERCASE with underscores)
+            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
+            
             await CategoryTeamService.createCategoryTeam(
               newCategory.id,
               {
                 teamId: teamAssignment.team_id,
-                status: teamAssignment.status,
+                status: backendStatus,
                 receptionStatus: teamAssignment.reception_status,
                 paymentStatus: teamAssignment.payment_status,
                 notes: teamAssignment.notes
@@ -661,6 +685,609 @@ const Projects: React.FC = () => {
       console.error('Error deleting category:', error);
       alert('Failed to delete category');
     }
+  };
+  
+  // Render tree view
+  const renderTreeView = () => {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">Project Hierarchy</h2>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-lg ${viewMode === 'card' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              title="Card View"
+            >
+              <LayoutGrid className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('tree')}
+              className={`p-2 rounded-lg ${viewMode === 'tree' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              title="Tree View"
+            >
+              <List className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-4">
+          {/* Projects */}
+          {projects.map(project => (
+            <div key={project.id} className="mb-2">
+              <div 
+                className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
+                  selectedProject?.id === project.id ? 'bg-blue-100' : 'hover:bg-gray-100'
+                }`}
+                onClick={() => handleSelectProject(project)}
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedSections(prev => ({
+                      ...prev,
+                      [project.id]: !prev[project.id]
+                    }));
+                  }}
+                >
+                  {expandedSections[project.id] ? (
+                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
+                <Building2 className="h-5 w-5 text-blue-500" />
+                <span className="font-medium">{project.name}</span>
+                <span className="text-gray-500 text-sm">{project.location}</span>
+                <div className="flex ml-auto">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditProject(project);
+                    }}
+                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteProject(project.id);
+                    }}
+                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Units */}
+              {expandedSections[project.id] && selectedProject?.id === project.id && (
+                <div className="ml-8">
+                  {units.length > 0 ? (
+                    units.map(unit => (
+                      <div key={unit.id} className="mb-2">
+                        <div 
+                          className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
+                            selectedUnit?.id === unit.id ? 'bg-green-100' : 'hover:bg-gray-100'
+                          }`}
+                          onClick={() => handleSelectUnit(unit)}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedSections(prev => ({
+                                ...prev,
+                                [unit.id]: !prev[unit.id]
+                              }));
+                            }}
+                          >
+                            {expandedSections[unit.id] ? (
+                              <ChevronDown className="h-5 w-5 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="h-5 w-5 text-gray-400" />
+                            )}
+                          </button>
+                          <Home className="h-5 w-5 text-green-500" />
+                          <span className="font-medium">{unit.name}</span>
+                          <span className="text-gray-500 text-sm">{unit.type.toUpperCase()}</span>
+                          <div className="flex ml-auto">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditUnit(unit);
+                              }}
+                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteUnit(unit.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Categories */}
+                        {expandedSections[unit.id] && selectedUnit?.id === unit.id && (
+                          <div className="ml-8">
+                            {categories.length > 0 ? (
+                              categories.map(category => (
+                                <div key={category.id} className="mb-2">
+                                  <div 
+                                    className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
+                                      selectedCategory?.id === category.id ? 'bg-orange-100' : 'hover:bg-gray-100'
+                                    }`}
+                                    onClick={() => handleSelectCategory(category)}
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedSections(prev => ({
+                                          ...prev,
+                                          [category.id]: !prev[category.id]
+                                        }));
+                                      }}
+                                    >
+                                      {expandedSections[category.id] ? (
+                                        <ChevronDown className="h-5 w-5 text-gray-400" />
+                                      ) : (
+                                        <ChevronRight className="h-5 w-5 text-gray-400" />
+                                      )}
+                                    </button>
+                                    <Calendar className="h-5 w-5 text-orange-500" />
+                                    <span className="font-medium">{category.name}</span>
+                                    <span className="text-gray-500 text-sm">
+                                      {categoryTeams.filter(ct => ct.category_id === category.id).length} teams
+                                    </span>
+                                    <div className="flex ml-auto">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleEditCategory(category);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteCategory(category.id);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Teams */}
+                                  {expandedSections[category.id] && selectedCategory?.id === category.id && (
+                                    <div className="ml-8">
+                                      {categoryTeams.length > 0 ? (
+                                        categoryTeams.map(team => (
+                                          <div 
+                                            key={team.id} 
+                                            className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100"
+                                          >
+                                            <div 
+                                              className="w-3 h-3 rounded-full"
+                                              style={{ backgroundColor: team.team?.color }}
+                                            ></div>
+                                            <Users className="h-5 w-5 text-purple-500" />
+                                            <span className="font-medium">{team.team?.name}</span>
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                              team.status === 'done' ? 'bg-green-100 text-green-800' :
+                                              team.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                                              team.status === 'delayed' ? 'bg-red-100 text-red-800' :
+                                              'bg-gray-100 text-gray-800'
+                                            }`}>
+                                              {team.status.replace('_', ' ').toUpperCase()}
+                                            </span>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="text-sm text-gray-500 italic p-2">
+                                          No teams assigned
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex items-center space-x-2 p-2">
+                                <span className="text-gray-500 italic">No categories found.</span>
+                                <button
+                                  onClick={() => handleCreateCategory()}
+                                  className="text-blue-600 hover:text-blue-800 text-sm"
+                                >
+                                  Add Category
+                                </button>
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <button
+                                onClick={() => handleCreateCategory()}
+                                className="flex items-center text-blue-600 hover:text-blue-800 p-2"
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add New Category
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center space-x-2 p-2">
+                      <span className="text-gray-500 italic">No units found.</span>
+                      <button
+                        onClick={() => handleCreateUnit()}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Add Unit
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-2">
+                    <button
+                      onClick={() => handleCreateUnit()}
+                      className="flex items-center text-blue-600 hover:text-blue-800 p-2"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add New Unit
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="mt-4">
+            <button
+              onClick={handleCreateProject}
+              className="flex items-center text-blue-600 hover:text-blue-800 p-2"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add New Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  // Render card view
+  const renderCardView = () => {
+    return (
+      <>
+        {/* Projects Section */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div 
+            className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
+            onClick={() => toggleSection('projects')}
+          >
+            <div className="flex items-center">
+              <Building2 className="h-5 w-5 text-gray-500 mr-2" />
+              <h2 className="text-lg font-medium text-gray-900">Projects</h2>
+              <span className="ml-2 text-sm text-gray-500">({projects.length})</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCreateProject();
+                }}
+                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Project
+              </button>
+              <button onClick={(e) => {
+                e.stopPropagation();
+                toggleSection('projects');
+              }}>
+                {expandedSections.projects ? (
+                  <ChevronDown className="h-5 w-5 text-gray-500" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 text-gray-500" />
+                )}
+              </button>
+            </div>
+          </div>
+          
+          {expandedSections.projects && (
+            <div className="p-4">
+              <div className="mb-4">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search projects..."
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {projects.map((project) => (
+                  <div 
+                    key={project.id}
+                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      selectedProject?.id === project.id 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => handleSelectProject(project)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-medium text-gray-900">{project.name}</h3>
+                        <div className="flex items-center text-sm text-gray-600 mt-1">
+                          <MapPin className="h-4 w-4 mr-1" />
+                          {project.location}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          project.status === 'active' ? 'bg-green-100 text-green-800' :
+                          project.status === 'planning' ? 'bg-blue-100 text-blue-800' :
+                          project.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                        </span>
+                        <div className="flex">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditProject(project);
+                            }}
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteProject(project.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4 mt-3">
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900">{project.progress || 0}%</div>
+                        <div className="text-xs text-gray-600">Progress</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900">
+                          {new Date(project.end_date).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-600">End Date</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900">{project.unit_count || 0}</div>
+                        <div className="text-xs text-gray-600">Units</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {projects.length === 0 && !loading && (
+                  <div className="text-center py-8">
+                    <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">No projects found</h3>
+                    <p className="text-gray-600 mb-4">Get started by creating your first project</p>
+                    <button
+                      onClick={handleCreateProject}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Project
+                    </button>
+                  </div>
+                )}
+                
+                {loading && (
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-gray-600">Loading projects...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Units Section */}
+        {selectedProject && (
+          <div 
+            ref={unitsRef}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+          >
+            <div 
+              className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
+              onClick={() => toggleSection('units')}
+            >
+              <div className="flex items-center">
+                <Home className="h-5 w-5 text-gray-500 mr-2" />
+                <h2 className="text-lg font-medium text-gray-900">Units</h2>
+                <span className="ml-2 text-sm text-gray-500">({units.length})</span>
+                <span className="ml-2 text-sm text-blue-600">
+                  Project: {selectedProject.name}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCreateUnit();
+                  }}
+                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Unit
+                </button>
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSection('units');
+                }}>
+                  {expandedSections.units ? (
+                    <ChevronDown className="h-5 w-5 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-5 w-5 text-gray-500" />
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {expandedSections.units && (
+              <div className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {units.map((unit) => (
+                    <UnitCard
+                      key={unit.id}
+                      unit={unit}
+                      categories={categories.filter(c => c.unit_id === unit.id)}
+                      onEdit={() => handleEditUnit(unit)}
+                      onDelete={() => handleDeleteUnit(unit.id)}
+                      onAddCategory={() => {
+                        setSelectedUnit(unit);
+                        handleCreateCategory();
+                      }}
+                      onSelect={() => handleSelectUnit(unit)}
+                    />
+                  ))}
+                  
+                  {units.length === 0 && !loading && (
+                    <div className="col-span-full text-center py-8">
+                      <Home className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-1">No units found</h3>
+                      <p className="text-gray-600 mb-4">Add units to organize your project</p>
+                      <button
+                        onClick={handleCreateUnit}
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Unit
+                      </button>
+                    </div>
+                  )}
+                  
+                  {loading && (
+                    <div className="col-span-full text-center py-8">
+                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className="text-gray-600">Loading units...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Categories Section */}
+        {selectedUnit && (
+          <div 
+            ref={categoriesRef}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+          >
+            <div 
+              className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
+              onClick={() => toggleSection('categories')}
+            >
+              <div className="flex items-center">
+                <Calendar className="h-5 w-5 text-gray-500 mr-2" />
+                <h2 className="text-lg font-medium text-gray-900">Categories</h2>
+                <span className="ml-2 text-sm text-gray-500">({categories.length})</span>
+                <span className="ml-2 text-sm text-blue-600">
+                  Unit: {selectedUnit.name}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCreateCategory();
+                  }}
+                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Category
+                </button>
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSection('categories');
+                }}>
+                  {expandedSections.categories ? (
+                    <ChevronDown className="h-5 w-5 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-5 w-5 text-gray-500" />
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {expandedSections.categories && (
+              <div className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categories.map((category) => (
+                    <CategoryCard
+                      key={category.id}
+                      category={category}
+                      categoryTeams={
+                        selectedCategory?.id === category.id
+                          ? categoryTeams
+                          : []
+                      }
+                      onEdit={() => handleEditCategory(category)}
+                      onDelete={() => handleDeleteCategory(category.id)}
+                      onSelect={() => handleSelectCategory(category)}
+                    />
+                  ))}
+                  
+                  {categories.length === 0 && !loading && (
+                    <div className="col-span-full text-center py-8">
+                      <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-1">No categories found</h3>
+                      <p className="text-gray-600 mb-4">Add categories to organize work in this unit</p>
+                      <button
+                        onClick={handleCreateCategory}
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Category
+                      </button>
+                    </div>
+                  )}
+                  
+                  {loading && (
+                    <div className="col-span-full text-center py-8">
+                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className="text-gray-600">Loading categories...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    );
   };
   
   // Project Modal Component
@@ -937,319 +1564,33 @@ const Projects: React.FC = () => {
             Manage your construction projects, units, and categories
           </p>
         </div>
-        <button
-          onClick={handleCreateProject}
-          className="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Project
-        </button>
-      </div>
-
-      {/* Projects Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div 
-          className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-          onClick={() => toggleSection('projects')}
-        >
-          <div className="flex items-center">
-            <Building2 className="h-5 w-5 text-gray-500 mr-2" />
-            <h2 className="text-lg font-medium text-gray-900">Projects</h2>
-            <span className="ml-2 text-sm text-gray-500">({projects.length})</span>
-          </div>
-          <button>
-            {expandedSections.projects ? (
-              <ChevronDown className="h-5 w-5 text-gray-500" />
-            ) : (
-              <ChevronRight className="h-5 w-5 text-gray-500" />
-            )}
+        <div className="flex items-center space-x-2 mt-4 sm:mt-0">
+          <button
+            onClick={() => setViewMode('card')}
+            className={`p-2 rounded-lg ${viewMode === 'card' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            title="Card View"
+          >
+            <LayoutGrid className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setViewMode('tree')}
+            className={`p-2 rounded-lg ${viewMode === 'tree' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+            title="Tree View"
+          >
+            <List className="h-5 w-5" />
+          </button>
+          <button
+            onClick={handleCreateProject}
+            className="ml-2 inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Project
           </button>
         </div>
-        
-        {expandedSections.projects && (
-          <div className="p-4">
-            <div className="mb-4">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search projects..."
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              {projects.map((project) => (
-                <div 
-                  key={project.id}
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    selectedProject?.id === project.id 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                  onClick={() => handleSelectProject(project)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-gray-900">{project.name}</h3>
-                      <div className="flex items-center text-sm text-gray-600 mt-1">
-                        <MapPin className="h-4 w-4 mr-1" />
-                        {project.location}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        project.status === 'active' ? 'bg-green-100 text-green-800' :
-                        project.status === 'planning' ? 'bg-blue-100 text-blue-800' :
-                        project.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                      </span>
-                      <div className="flex">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditProject(project);
-                          }}
-                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProject(project.id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-4 mt-3">
-                    <div className="text-center">
-                      <div className="text-sm font-medium text-gray-900">{project.progress || 0}%</div>
-                      <div className="text-xs text-gray-600">Progress</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-sm font-medium text-gray-900">
-                        {new Date(project.end_date).toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-gray-600">End Date</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-sm font-medium text-gray-900">{project.unit_count || 0}</div>
-                      <div className="text-xs text-gray-600">Units</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              {projects.length === 0 && !loading && (
-                <div className="text-center py-8">
-                  <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-1">No projects found</h3>
-                  <p className="text-gray-600 mb-4">Get started by creating your first project</p>
-                  <button
-                    onClick={handleCreateProject}
-                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Project
-                  </button>
-                </div>
-              )}
-              
-              {loading && (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                  <p className="text-gray-600">Loading projects...</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Units Section */}
-      {selectedProject && (
-        <div 
-          ref={unitsRef}
-          className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
-        >
-          <div 
-            className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-            onClick={() => toggleSection('units')}
-          >
-            <div className="flex items-center">
-              <Home className="h-5 w-5 text-gray-500 mr-2" />
-              <h2 className="text-lg font-medium text-gray-900">Units</h2>
-              <span className="ml-2 text-sm text-gray-500">({units.length})</span>
-              <span className="ml-2 text-sm text-blue-600">
-                Project: {selectedProject.name}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCreateUnit();
-                }}
-                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Unit
-              </button>
-              <button onClick={(e) => {
-                e.stopPropagation();
-                toggleSection('units');
-              }}>
-                {expandedSections.units ? (
-                  <ChevronDown className="h-5 w-5 text-gray-500" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-gray-500" />
-                )}
-              </button>
-            </div>
-          </div>
-          
-          {expandedSections.units && (
-            <div className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {units.map((unit) => (
-                  <UnitCard
-                    key={unit.id}
-                    unit={unit}
-                    categories={categories.filter(c => c.unit_id === unit.id)}
-                    onEdit={() => handleEditUnit(unit)}
-                    onDelete={() => handleDeleteUnit(unit.id)}
-                    onAddCategory={() => {
-                      setSelectedUnit(unit);
-                      handleCreateCategory();
-                    }}
-                    onSelect={() => handleSelectUnit(unit)}
-                  />
-                ))}
-                
-                {units.length === 0 && !loading && (
-                  <div className="col-span-full text-center py-8">
-                    <Home className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">No units found</h3>
-                    <p className="text-gray-600 mb-4">Add units to organize your project</p>
-                    <button
-                      onClick={handleCreateUnit}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add First Unit
-                    </button>
-                  </div>
-                )}
-                
-                {loading && (
-                  <div className="col-span-full text-center py-8">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    <p className="text-gray-600">Loading units...</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Categories Section */}
-      {selectedUnit && (
-        <div 
-          ref={categoriesRef}
-          className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
-        >
-          <div 
-            className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-            onClick={() => toggleSection('categories')}
-          >
-            <div className="flex items-center">
-              <Calendar className="h-5 w-5 text-gray-500 mr-2" />
-              <h2 className="text-lg font-medium text-gray-900">Categories</h2>
-              <span className="ml-2 text-sm text-gray-500">({categories.length})</span>
-              <span className="ml-2 text-sm text-blue-600">
-                Unit: {selectedUnit.name}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCreateCategory();
-                }}
-                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Category
-              </button>
-              <button onClick={(e) => {
-                e.stopPropagation();
-                toggleSection('categories');
-              }}>
-                {expandedSections.categories ? (
-                  <ChevronDown className="h-5 w-5 text-gray-500" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-gray-500" />
-                )}
-              </button>
-            </div>
-          </div>
-          
-          {expandedSections.categories && (
-            <div className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {categories.map((category) => (
-                  <CategoryCard
-                    key={category.id}
-                    category={category}
-                    categoryTeams={
-                      selectedCategory?.id === category.id
-                        ? categoryTeams
-                        : []
-                    }
-                    onEdit={() => handleEditCategory(category)}
-                    onDelete={() => handleDeleteCategory(category.id)}
-                    onSelect={() => handleSelectCategory(category)}
-                  />
-                ))}
-                
-                {categories.length === 0 && !loading && (
-                  <div className="col-span-full text-center py-8">
-                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">No categories found</h3>
-                    <p className="text-gray-600 mb-4">Add categories to organize work in this unit</p>
-                    <button
-                      onClick={handleCreateCategory}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add First Category
-                    </button>
-                  </div>
-                )}
-                
-                {loading && (
-                  <div className="col-span-full text-center py-8">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    <p className="text-gray-600">Loading categories...</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Main Content */}
+      {viewMode === 'tree' ? renderTreeView() : renderCardView()}
 
       {/* Modals */}
       <ProjectModal />
