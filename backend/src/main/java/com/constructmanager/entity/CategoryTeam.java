@@ -59,7 +59,6 @@ public class CategoryTeam {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id", nullable = false)
-    @com.fasterxml.jackson.annotation.JsonIdentityReference(alwaysAsId = true)
     private Team team;
     
     // One-to-Many with lazy loading

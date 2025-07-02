@@ -15,94 +15,96 @@ import java.util.Optional;
 
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
-    
+
     /**
      * Find categories by unit with pagination, ordered by sequence
      */
     Page<Category> findByUnitIdOrderByOrderSequenceAsc(Long unitId, Pageable pageable);
-    
+
     /**
      * Find categories by unit without pagination, ordered by sequence
      */
-    List<Category> findByUnitIdOrderByOrderSequenceAsc(Long unitId);
-    
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.categoryTeams ct LEFT JOIN FETCH ct.team WHERE c.unit.id = :unitId ORDER BY c.orderSequence ASC")
+    List<Category> findByUnitIdOrderByOrderSequenceAsc(@Param("unitId") Long unitId);
+
     /**
      * Find category by ID and unit ID for security
      */
-    Optional<Category> findByIdAndUnitId(Long id, Long unitId);
-    
+    @Query("SELECT c FROM Category c LEFT JOIN FETCH c.categoryTeams ct LEFT JOIN FETCH ct.team WHERE c.id = :id AND c.unit.id = :unitId")
+    Optional<Category> findByIdAndUnitId(@Param("id") Long id, @Param("unitId") Long unitId);
+
     /**
      * Find categories with delayed tasks
      */
     @Query("SELECT DISTINCT c FROM Category c " +
-           "JOIN c.categoryTeams ct " +
-           "WHERE c.unit.project.company.id = :companyId " +
-           "AND ct.status = 'DELAYED'")
+            "JOIN c.categoryTeams ct " +
+            "WHERE c.unit.project.company.id = :companyId " +
+            "AND ct.status = 'DELAYED'")
     Page<Category> findCategoriesWithDelayedTasks(@Param("companyId") Long companyId, Pageable pageable);
-    
+
     /**
      * Find categories starting soon (within specified days)
      */
     @Query("SELECT c FROM Category c " +
-           "WHERE c.unit.project.company.id = :companyId " +
-           "AND c.startDate BETWEEN :today AND :futureDate " +
-           "ORDER BY c.startDate ASC")
+            "WHERE c.unit.project.company.id = :companyId " +
+            "AND c.startDate BETWEEN :today AND :futureDate " +
+            "ORDER BY c.startDate ASC")
     Page<Category> findCategoriesStartingSoon(
-        @Param("companyId") Long companyId,
-        @Param("today") LocalDate today,
-        @Param("futureDate") LocalDate futureDate,
-        Pageable pageable);
-    
+            @Param("companyId") Long companyId,
+            @Param("today") LocalDate today,
+            @Param("futureDate") LocalDate futureDate,
+            Pageable pageable);
+
     /**
      * Find overdue categories
      */
     @Query("SELECT c FROM Category c " +
-           "WHERE c.unit.project.company.id = :companyId " +
-           "AND c.endDate < :today " +
-           "AND c.progressPercentage < 100 " +
-           "ORDER BY c.endDate ASC")
+            "WHERE c.unit.project.company.id = :companyId " +
+            "AND c.endDate < :today " +
+            "AND c.progressPercentage < 100 " +
+            "ORDER BY c.endDate ASC")
     Page<Category> findOverdueCategories(@Param("companyId") Long companyId, @Param("today") LocalDate today, Pageable pageable);
-    
+
     /**
      * Count categories by unit
      */
     Long countByUnitId(Long unitId);
-    
+
     /**
      * Get next order sequence for a unit
      */
     @Query("SELECT COALESCE(MAX(c.orderSequence), 0) + 1 FROM Category c WHERE c.unit.id = :unitId")
     Integer getNextOrderSequence(@Param("unitId") Long unitId);
-    
+
     /**
      * Count categories by project
      */
     @Query("SELECT COUNT(c) FROM Category c JOIN c.unit u WHERE u.project.id = :projectId")
     Long countCategoriesByProjectId(@Param("projectId") Long projectId);
-    
+
     /**
      * Count completed categories by project
      */
     @Query("SELECT COUNT(c) FROM Category c JOIN c.unit u WHERE u.project.id = :projectId AND c.progressPercentage = 100")
     Long countCompletedCategoriesByProjectId(@Param("projectId") Long projectId);
-    
+
     /**
      * Get category analytics grouped by name
      */
     @Query("SELECT c.name, " +
-           "DATEDIFF(c.endDate, c.startDate) as duration, " +
-           "c.progressPercentage, " +
-           "CASE WHEN c.endDate < CURRENT_DATE AND c.progressPercentage < 100 THEN true ELSE false END as isDelayed " +
-           "FROM Category c " +
-           "WHERE c.unit.project.company.id = :companyId")
+            "DATEDIFF(c.endDate, c.startDate) as duration, " +
+            "c.progressPercentage, " +
+            "CASE WHEN c.endDate < CURRENT_DATE AND c.progressPercentage < 100 THEN true ELSE false END as isDelayed " +
+            "FROM Category c " +
+            "WHERE c.unit.project.company.id = :companyId")
     List<Object[]> getCategoryAnalyticsRaw(@Param("companyId") Long companyId);
-    
+
     /**
      * Get category analytics grouped by name
      */
     default Map<String, List<Object[]>> getCategoryAnalytics(Long companyId) {
         List<Object[]> rawData = getCategoryAnalyticsRaw(companyId);
-        
+
         return rawData.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         row -> (String) row[0]

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit, Trash2, Calendar, Users, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Edit, Trash2, Calendar, Users, CheckCircle, XCircle, Clock, AlertTriangle, Plus } from 'lucide-react'; // Import Plus icon
 import { Category, CategoryTeam, Team } from '../../types';
 
 interface CategoryCardProps {
@@ -58,12 +58,24 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
         </div>
         
         <div className="flex space-x-2">
+          {/* New Add Team button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(); // This will open the CategoryModal where teams can be added
+            }}
+            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+            title="Add Team"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEdit();
             }}
             className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+            title="Edit Category"
           >
             <Edit className="h-4 w-4" />
           </button>
@@ -73,6 +85,7 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
               onDelete();
             }}
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+            title="Delete Category"
           >
             <Trash2 className="h-4 w-4" />
           </button>
