@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Project, Unit } from '../types';
 import UnitModal from '../components/UnitManagement/UnitModal';
 import { ProjectService } from '../lib/projectService';
-import { UnitService } from '../lib/unitService';
+import { BackendUnitType, UnitService } from '../lib/unitService';
 import { DashboardService, DashboardStats } from '../lib/dashboardService';
 import ProjectCard from '../components/Dashboard/ProjectCard';
 
@@ -36,7 +36,13 @@ const Dashboard: React.FC = () => {
       
       // Load projects
       const projectsResponse = await ProjectService.getProjects(user.company_id, 0, 4);
-      setProjects(projectsResponse.content);
+      // Map start_date/end_date for compatibility
+      const mappedProjects = projectsResponse.content.map((p) => ({
+        ...p,
+        start_date: p.start_date,
+        end_date: p.end_date,
+      }));
+      setProjects(mappedProjects);
       
       // Get units from the first project if available
       if (projectsResponse.content.length > 0) {
@@ -55,6 +61,12 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     loadDashboardData();
   }, [user?.company_id]);
+
+  useEffect(() => {
+    if (projects.length > 0) {
+      console.log('Dashboard projects:', projects);
+    }
+  }, [projects]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -103,7 +115,7 @@ const Dashboard: React.FC = () => {
       // Create a clean unit object without undefined values
       const cleanUnitData = {
         name: unitData.name,
-        type: unitData.type,
+        type: unitData.type as BackendUnitType,
         floor: unitData.type === 'apartment' ? unitData.floor || '' : undefined,
         area: unitData.area ? Number(unitData.area) : undefined,
         description: unitData.description || ''
@@ -149,7 +161,7 @@ const Dashboard: React.FC = () => {
       // Create a clean unit object without undefined values
       const cleanUnitData = {
         name: newUnitData.name,
-        type: newUnitData.type,
+        type: newUnitData.type as BackendUnitType,
         floor: newUnitData.type === 'apartment' ? newUnitData.floor || '' : undefined,
         area: newUnitData.area ? Number(newUnitData.area) : undefined,
         description: newUnitData.description || ''
@@ -177,8 +189,8 @@ const Dashboard: React.FC = () => {
     const [formData, setFormData] = useState({
       name: '',
       location: '',
-      startDate: '',
-      endDate: '',
+      start_date: '',
+      end_date: '',
       description: ''
     });
 
@@ -196,16 +208,16 @@ const Dashboard: React.FC = () => {
         newErrors.location = 'Location is required';
       }
       
-      if (!formData.startDate) {
-        newErrors.startDate = 'Start date is required';
+      if (!formData.start_date) {
+        newErrors.start_date = 'Start date is required';
       }
       
-      if (!formData.endDate) {
-        newErrors.endDate = 'End date is required';
+      if (!formData.end_date) {
+        newErrors.end_date = 'End date is required';
       }
       
-      if (formData.startDate && formData.endDate && new Date(formData.startDate) >= new Date(formData.endDate)) {
-        newErrors.endDate = 'End date must be after start date';
+      if (formData.start_date && formData.end_date && new Date(formData.start_date) >= new Date(formData.end_date)) {
+        newErrors.end_date = 'End date must be after start date';
       }
 
       setErrors(newErrors);
@@ -225,14 +237,14 @@ const Dashboard: React.FC = () => {
         await ProjectService.createProject(user.company_id, {
           name: formData.name,
           location: formData.location,
-          startDate: formData.startDate,
-          endDate: formData.endDate,
+          startDate: formData.start_date,
+          endDate: formData.end_date,
           description: formData.description
         });
 
         alert(`Project "${formData.name}" created successfully!`);
         setShowCreateProjectModal(false);
-        setFormData({ name: '', location: '', startDate: '', endDate: '', description: '' });
+        setFormData({ name: '', location: '', start_date: '', end_date: '', description: '' });
         setErrors({});
         
         // Refresh dashboard data
@@ -247,7 +259,7 @@ const Dashboard: React.FC = () => {
 
     const handleClose = () => {
       setShowCreateProjectModal(false);
-      setFormData({ name: '', location: '', startDate: '', endDate: '', description: '' });
+      setFormData({ name: '', location: '', start_date: '', end_date: '', description: '' });
       setErrors({});
     };
 
@@ -309,13 +321,13 @@ const Dashboard: React.FC = () => {
                 <input
                   type="date"
                   required
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.startDate ? 'border-red-300' : 'border-gray-300'
+                    errors.start_date ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
-                {errors.startDate && <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>}
+                {errors.start_date && <p className="mt-1 text-sm text-red-600">{errors.start_date}</p>}
               </div>
               
               <div>
@@ -325,13 +337,13 @@ const Dashboard: React.FC = () => {
                 <input
                   type="date"
                   required
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.endDate ? 'border-red-300' : 'border-gray-300'
+                    errors.end_date ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
-                {errors.endDate && <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>}
+                {errors.end_date && <p className="mt-1 text-sm text-red-600">{errors.end_date}</p>}
               </div>
             </div>
 

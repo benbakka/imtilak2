@@ -35,4 +35,12 @@ public class GlobalExceptionHandler {
         System.out.println("Illegal argument error: " + error);
         return ResponseEntity.badRequest().body(error);
     }
+    
+    @ExceptionHandler(ResourceNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<Map<String, String>> handleResourceNotFoundException(ResourceNotFoundException ex) {
+        Map<String, String> error = Map.of("message", ex.getMessage());
+        System.out.println("Resource not found error: " + error);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
 }

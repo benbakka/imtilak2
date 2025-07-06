@@ -83,7 +83,7 @@ export interface CategoryTeam {
   id: string;
   category_id: string;
   team_id: string;
-  status: 'not_started' | 'in_progress' | 'done' | 'delayed';
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'DELAYED'; // Changed to uppercase
   reception_status: boolean;
   payment_status: boolean;
   notes: string;
@@ -141,7 +141,6 @@ export interface UnitTemplate {
   unit_type: 'villa' | 'apartment' | 'commercial';
   company_id: string;
   categories: TemplateCategory[];
-  created_at: string;
 }
 
 export interface TemplateCategory {

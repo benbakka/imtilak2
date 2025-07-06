@@ -2,6 +2,7 @@ package com.constructmanager.service;
 
 import com.constructmanager.dto.*;
 import com.constructmanager.entity.CategoryTeam;
+import com.constructmanager.exception.ResourceNotFoundException;
 import com.constructmanager.repository.CategoryRepository;
 import com.constructmanager.repository.CategoryTeamRepository;
 import com.constructmanager.repository.TeamRepository;
@@ -73,27 +74,33 @@ public class CategoryTeamService {
      * Update category team assignment
      */
     @Transactional
-    public Optional<CategoryTeam> updateCategoryTeam(Long categoryTeamId, CategoryTeamUpdateDTO dto) {
-        return categoryTeamRepository.findById(categoryTeamId)
-                .map(categoryTeam -> {
-                    if (dto.getStatus() != null) {
-                        categoryTeam.setStatus(dto.getStatus());
-                    }
-                    if (dto.getReceptionStatus() != null) {
-                        categoryTeam.setReceptionStatus(dto.getReceptionStatus());
-                    }
-                    if (dto.getPaymentStatus() != null) {
-                        categoryTeam.setPaymentStatus(dto.getPaymentStatus());
-                    }
-                    if (dto.getNotes() != null) {
-                        categoryTeam.setNotes(dto.getNotes());
-                    }
-                    if (dto.getProgressPercentage() != null) {
-                        categoryTeam.setProgressPercentage(dto.getProgressPercentage());
-                    }
-                    
-                    return categoryTeamRepository.save(categoryTeam);
-                });
+    public CategoryTeam updateCategoryTeam(Long id, CategoryTeamUpdateDTO updateDTO) {
+        CategoryTeam categoryTeam = categoryTeamRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("CategoryTeam not found with id: " + id));
+        
+        if (updateDTO.getStatus() != null) {
+            categoryTeam.setStatus(updateDTO.getStatus());
+        }
+        
+        if (updateDTO.getReceptionStatus() != null) {
+            categoryTeam.setReceptionStatus(updateDTO.getReceptionStatus());
+        }
+        
+        if (updateDTO.getPaymentStatus() != null) {
+            categoryTeam.setPaymentStatus(updateDTO.getPaymentStatus());
+        }
+        
+        if (updateDTO.getNotes() != null) {
+            categoryTeam.setNotes(updateDTO.getNotes());
+        }
+        
+        if (updateDTO.getProgressPercentage() != null) {
+            // Ensure progressPercentage is between 0 and 100
+            Integer progressPercentage = Math.max(0, Math.min(100, updateDTO.getProgressPercentage()));
+            categoryTeam.setProgressPercentage(progressPercentage);
+        }
+        
+        return categoryTeamRepository.save(categoryTeam);
     }
     
     /**

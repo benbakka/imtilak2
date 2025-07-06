@@ -1,1559 +1,788 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Filter, ChevronRight, ChevronDown, Home, MapPin, Calendar, Users, Edit, Trash2, X, Save, LayoutGrid, List } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Plus, Search, Building2, Home, ListTree, ChevronRight,
+  Edit, Trash2, X, Save, Filter, Calendar, MapPin, Users,
+  CheckCircle, AlertTriangle, Clock, Eye
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Project, Unit, Category, CategoryTeam, Team, UnitTemplate } from '../types';
-import { ProjectService, ProjectCreateRequest, ProjectUpdateRequest } from '../lib/projectService';
-import { UnitService, BackendUnitType } from '../lib/unitService';
-import { CategoryService } from '../lib/categoryService';
+import { Project, Unit, Category, Team, CategoryTeam } from '../types';
+import { ProjectService, ProjectCreateRequest, ProjectUpdateRequest, ProjectFilters } from '../lib/projectService';
+import { UnitService, UnitCreateRequest, UnitUpdateRequest, BackendUnitType } from '../lib/unitService';
+import { CategoryService, CategoryCreateRequest, CategoryUpdateRequest } from '../lib/categoryService';
+import { CategoryTeamService, CategoryTeamUpdateRequest, BackendTaskStatus } from '../lib/categoryTeamService';
 import { TeamService } from '../lib/teamService';
-import { CategoryTeamService, BackendTaskStatus } from '../lib/categoryTeamService';
 import { TemplateService } from '../lib/templateService';
-import UnitModal from '../components/UnitManagement/UnitModal';
+import ProjectCard from '../components/Dashboard/ProjectCard'; // Reusing ProjectCard from Dashboard
 import UnitCard from '../components/UnitManagement/UnitCard';
-import CategoryModal from '../components/CategoryManagement/CategoryModal';
 import CategoryCard from '../components/CategoryManagement/CategoryCard';
+import UnitModal from '../components/UnitManagement/UnitModal';
+import CategoryModal from '../components/CategoryManagement/CategoryModal';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+// Define a simple ProjectModal for creation/editing
+interface ProjectModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (project: Partial<Project>) => Promise<void>;
+  project?: Project | null;
+}
+
+const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onSave, project }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    location: '',
+    start_date: '',
+    end_date: '',
+    description: ''
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (project) {
+      // Format dates properly for the date input fields (YYYY-MM-DD)
+      const formatDateForInput = (dateString: string) => {
+        if (!dateString) return '';
+        try {
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return '';
+          return date.toISOString().split('T')[0];
+        } catch (e) {
+          return '';
+        }
+      };
+
+      setFormData({
+        name: project.name,
+        location: project.location,
+        start_date: project.start_date && !isNaN(new Date(project.start_date).getTime()) ? new Date(project.start_date).toISOString().split('T')[0] : '',
+        end_date: project.end_date && !isNaN(new Date(project.end_date).getTime()) ? new Date(project.end_date).toISOString().split('T')[0] : '',
+        description: project.description || ''
+      });
+    } else {
+      setFormData({
+        name: '',
+        location: '',
+        start_date: '',
+        end_date: '',
+        description: ''
+      });
+    }
+    setErrors({});
+  }, [project, isOpen]);
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.name.trim()) newErrors.name = 'Project name is required';
+    if (!formData.location.trim()) newErrors.location = 'Location is required';
+    if (!formData.start_date) newErrors.start_date = 'Start date is required';
+    if (!formData.end_date) newErrors.end_date = 'End date is required';
+    if (formData.start_date && formData.end_date && new Date(formData.start_date) >= new Date(formData.end_date)) {
+      newErrors.end_date = 'End date must be after start date';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        id: project?.id,
+        name: formData.name,
+        location: formData.location,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        description: formData.description
+      });
+      onClose();
+    } catch (err) {
+      console.error('Error saving project:', err);
+      alert('Failed to save project. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">{project ? 'Edit Project' : 'Create New Project'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-6 w-6" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Name *</label>
+            <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-300' : 'border-gray-300'}`}
+              placeholder="e.g., Résidence Azure" />
+            {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+            <input type="text" required value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.location ? 'border-red-300' : 'border-gray-300'}`}
+              placeholder="e.g., Casablanca" />
+            {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+              <input type="date" required value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.start_date ? 'border-red-300' : 'border-gray-300'}`} />
+              {errors.start_date && <p className="mt-1 text-sm text-red-600">{errors.start_date}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+              <input type="date" required value={formData.end_date} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.end_date ? 'border-red-300' : 'border-gray-300'}`} />
+              {errors.end_date && <p className="mt-1 text-sm text-red-600">{errors.end_date}</p>}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Project description..." />
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <Save className="h-4 w-4 mr-2" />
+              {isSubmitting ? 'Saving...' : (project ? 'Update Project' : 'Create Project')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 
 const Projects: React.FC = () => {
   const { user } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Data states
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [categoryTeams, setCategoryTeams] = useState<CategoryTeam[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [templates, setTemplates] = useState<UnitTemplate[]>([]);
-  
-  // Modal states
+  const [teams, setTeams] = useState<Team[]>([]); // All teams for template/assignment
+  const [templates, setTemplates] = useState<any[]>([]); // Unit templates
+
+  // Selection states for tree view
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+
+  // Modals states
   const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showUnitModal, setShowUnitModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [showUnitModal, setShowUnitModal] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  
+
   // UI states
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    projects: true,
-    units: false,
-    categories: false
-  });
-  
-  // Refs for scrolling
-  const unitsRef = useRef<HTMLDivElement>(null);
-  const categoriesRef = useRef<HTMLDivElement>(null);
-  
-  // Load initial data
-  useEffect(() => {
-    if (user?.company_id) {
-      loadProjects();
-      loadTeams();
-      loadTemplates();
+  const [activeView, setActiveView] = useState<'card' | 'tree'>('card'); // 'card' or 'tree'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<Project['status'] | 'all'>('all');
+  const [categorySearchTerm, setCategorySearchTerm] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<{ [categoryId: string]: boolean }>({});
+
+  // Refs for scrolling to elements
+  const projectRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const unitRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const categoryRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  // --- Data Loading ---
+  const loadProjects = useCallback(async () => {
+    if (!user?.company_id) return;
+    setLoading(true);
+    try {
+      const filters: ProjectFilters = {};
+      if (searchTerm) filters.search = searchTerm;
+      if (filterStatus !== 'all') filters.status = filterStatus;
+
+      const response = await ProjectService.getProjects(user.company_id, 0, 100, 'name', 'asc', filters);
+      // Normalize project data to use snake_case for ProjectCard
+      const normalizedProjects = response.content.map((p) => ({
+        ...p,
+        start_date: p.start_date || p.start_date || '',
+        end_date: p.end_date || p.end_date || '',
+        active_team_count: typeof p.active_team_count === 'number' ? p.active_team_count : (p.active_team_count || 0)
+      }));
+      setProjects(normalizedProjects);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load projects:', err);
+      setError('Failed to load projects.');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.company_id, searchTerm, filterStatus]);
+
+  const loadUnits = useCallback(async (projectId: string) => {
+    setLoading(true);
+    try {
+      const response = await UnitService.getUnits(projectId, 0, 100);
+      setUnits(response.content);
+      setError('');
+    } catch (err) {
+      console.error(`Failed to load units for project ${projectId}:`, err);
+      setError(`Failed to load units for project ${projectId}.`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadCategories = useCallback(async (unitId: string) => {
+    setLoading(true);
+    try {
+      console.log(`loadCategories: Fetching categories for unitId: ${unitId}`);
+      const response = await CategoryService.getCategories(unitId);
+      console.log('loadCategories: Received response:', response);
+      setCategories([...response]);
+      setError('');
+    } catch (err) {
+      console.error(`loadCategories: Failed to load categories for unit ${unitId}:`, err);
+      setError(`Failed to load categories for unit ${unitId}.`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadTeams = useCallback(async () => {
+    if (!user?.company_id) return;
+    try {
+      const response = await TeamService.getAllActiveTeams(user.company_id);
+      setTeams(response);
+    } catch (err) {
+      console.error('Failed to load teams:', err);
     }
   }, [user?.company_id]);
-  
-  // Check for navigation state to auto-select project/unit/category
+
+  const loadTemplates = useCallback(async () => {
+    if (!user?.company_id) return;
+    try {
+      const response = await TemplateService.getTemplates(user.company_id, 0, 100);
+      setTemplates(response.content);
+    } catch (err) {
+      console.error('Failed to load templates:', err);
+    }
+  }, [user?.company_id]);
+
+  useEffect(() => {
+    loadProjects();
+    loadTeams();
+    loadTemplates();
+  }, [loadProjects, loadTeams, loadTemplates]);
+
+  // Handle deep linking from other pages (e.g., Schedule)
   useEffect(() => {
     if (location.state) {
-      const state = location.state as any;
-      
-      if (state.selectedProjectId) {
-        const projectId = state.selectedProjectId;
-        // Find the project in our loaded projects or load it
-        const project = projects.find(p => p.id === projectId);
-        if (project) {
-          handleSelectProject(project);
-          
-          // If we also have a unit ID, select that unit
-          if (state.selectedUnitId) {
-            loadUnits(projectId).then(() => {
-              const unit = units.find(u => u.id === state.selectedUnitId);
-              if (unit) {
-                handleSelectUnit(unit);
-                
-                // If we also have a category ID, select that category
-                if (state.selectedCategoryId) {
-                  loadCategories(state.selectedUnitId).then(() => {
-                    const category = categories.find(c => c.id === state.selectedCategoryId);
-                    if (category) {
-                      handleSelectCategory(category);
-                    }
-                  });
-                }
-              }
-            });
+      const { selectedProjectId, selectedUnitId, selectedCategoryId } = location.state;
+      if (selectedProjectId) {
+        setSelectedProjectId(selectedProjectId);
+        setActiveView('tree'); // Switch to tree view
+        if (selectedUnitId) {
+          setSelectedUnitId(selectedUnitId);
+          if (selectedCategoryId) {
+            setSelectedCategoryId(selectedCategoryId);
           }
-        } else {
-          // Load the project if not found
-          loadProject(projectId);
         }
+        // Clear state after processing
+        navigate(location.pathname, { replace: true, state: {} });
       }
     }
-  }, [location.state, projects.length]);
-  
-  const loadProjects = async () => {
+  }, [location.state, navigate]);
+
+  // Load units when a project is selected
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadUnits(selectedProjectId);
+      setUnits([]); // Clear previous units
+      setCategories([]); // Clear previous categories
+      setSelectedUnitId(null);
+      setSelectedCategoryId(null);
+    }
+  }, [selectedProjectId, loadUnits]);
+
+  // Load categories when a unit is selected
+  useEffect(() => {
+    if (selectedUnitId) {
+      loadCategories(selectedUnitId);
+      setCategories([]); // Clear previous categories
+      setSelectedCategoryId(null);
+    }
+  }, [selectedUnitId, loadCategories]);
+
+  // Scroll to selected item when deep linking
+  useEffect(() => {
+    if (selectedProjectId && projectRefs.current[selectedProjectId]) {
+      projectRefs.current[selectedProjectId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (selectedUnitId && unitRefs.current[selectedUnitId]) {
+      unitRefs.current[selectedUnitId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (selectedCategoryId && categoryRefs.current[selectedCategoryId]) {
+      categoryRefs.current[selectedCategoryId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedProjectId, selectedUnitId, selectedCategoryId, projects, units, categories]);
+
+
+  // --- Project CRUD Operations ---
+  const handleCreateProject = async (projectData: Partial<Project>) => {
     if (!user?.company_id) return;
+    const newProject: ProjectCreateRequest = {
+      name: projectData.name!,
+      location: projectData.location!,
+      startDate: projectData.start_date!,
+      endDate: projectData.end_date!,
+      description: projectData.description || '',
+      status: 'PLANNING' // Default status
+    };
+    await ProjectService.createProject(user.company_id, newProject);
+    await loadProjects();
+  };
+
+  const handleUpdateProject = async (projectData: Partial<Project>) => {
+    if (!user?.company_id || !projectData.id) return;
     
-    try {
-      setLoading(true);
-      setError('');
-      
-      const response = await ProjectService.getProjects(user.company_id);
-      setProjects(response.content);
-      
-      // If we have projects and none selected, select the first one
-      if (response.content.length > 0 && !selectedProject) {
-        handleSelectProject(response.content[0]);
-      }
-    } catch (error) {
-      console.error('Error loading projects:', error);
-      setError('Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const loadProject = async (projectId: string) => {
-    if (!user?.company_id) return;
+    // Find the existing project to preserve any fields not being updated
+    const existingProject = projects.find(p => p.id === projectData.id);
     
-    try {
-      setLoading(true);
-      
-      const project = await ProjectService.getProject(projectId, user.company_id);
-      
-      // Add to projects list if not already there
-      setProjects(prev => {
-        if (!prev.find(p => p.id === project.id)) {
-          return [...prev, project];
-        }
-        return prev;
-      });
-      
-      handleSelectProject(project);
-    } catch (error) {
-      console.error(`Error loading project ${projectId}:`, error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const loadUnits = async (projectId: string) => {
-    try {
-      setLoading(true);
-      
-      const response = await UnitService.getUnits(projectId);
-      setUnits(response.content);
-      
-      return response.content;
-    } catch (error) {
-      console.error(`Error loading units for project ${projectId}:`, error);
-      setUnits([]);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const loadCategories = async (unitId: string) => {
-    try {
-      setLoading(true);
-      
-      const categoriesData = await CategoryService.getCategories(unitId);
-      setCategories(categoriesData);
-      
-      return categoriesData;
-    } catch (error) {
-      console.error(`Error loading categories for unit ${unitId}:`, error);
-      setCategories([]);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const loadCategoryTeams = async (categoryId: string) => {
-    try {
-      const categoryTeamsData = await CategoryTeamService.getCategoryTeamsByCategory(categoryId);
-      
-      // Enhance with team data
-      const enhancedCategoryTeams = await Promise.all(
-        categoryTeamsData.map(async (ct) => {
-          try {
-            if (ct.team_id && user?.company_id) {
-              const teamData = await TeamService.getTeam(ct.team_id, user.company_id);
-              return { ...ct, team: teamData };
-            }
-            return ct;
-          } catch (error) {
-            console.error(`Error loading team for category team ${ct.id}:`, error);
-            return ct;
-          }
-        })
-      );
-      
-      setCategoryTeams(enhancedCategoryTeams);
-      return enhancedCategoryTeams;
-    } catch (error) {
-      console.error(`Error loading category teams for category ${categoryId}:`, error);
-      setCategoryTeams([]);
-      return [];
-    }
-  };
-  
-  const loadTeams = async () => {
-    if (!user?.company_id) return;
+    const updatedProject: ProjectUpdateRequest = {
+      name: projectData.name!,
+      location: projectData.location!,
+      startDate: projectData.start_date!,
+      endDate: projectData.end_date!,
+      description: projectData.description || '',
+      status: projectData.status // Keep existing status
+    };
     
-    try {
-      const teamsData = await TeamService.getAllActiveTeams(user.company_id);
-      setTeams(teamsData);
-    } catch (error) {
-      console.error('Error loading teams:', error);
-    }
+    await ProjectService.updateProject(projectData.id, user.company_id, updatedProject);
+    await loadProjects();
   };
-  
-  const loadTemplates = async () => {
-    if (!user?.company_id) return;
-    
-    try {
-      const response = await TemplateService.getTemplates(user.company_id);
-      setTemplates(response.content);
-    } catch (error) {
-      console.error('Error loading templates:', error);
-    }
-  };
-  
-  // Selection handlers
-  const handleSelectProject = (project: Project) => {
-    setSelectedProject(project);
-    setSelectedUnit(null);
-    setSelectedCategory(null);
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!user?.company_id || !confirm('Are you sure you want to delete this project? This action cannot be undone.')) return;
+    await ProjectService.deleteProject(projectId, user.company_id);
+    await loadProjects();
+    setSelectedProjectId(null);
+    setSelectedUnitId(null);
+    setSelectedCategoryId(null);
+    setUnits([]);
     setCategories([]);
-    setCategoryTeams([]);
-    
-    // Load units for this project
-    loadUnits(project.id);
-    
-    // Expand projects section, collapse others
-    setExpandedSections({
-      projects: true,
-      units: true,
-      categories: false
-    });
   };
-  
-  const handleSelectUnit = (unit: Unit) => {
-    setSelectedUnit(unit);
-    setSelectedCategory(null);
-    setCategoryTeams([]);
-    
-    // Load categories for this unit
-    loadCategories(unit.id);
-    
-    // Expand units and projects sections
-    setExpandedSections({
-      projects: true,
-      units: true,
-      categories: true
-    });
-    
-    // Scroll to units section
-    if (unitsRef.current) {
-      unitsRef.current.scrollIntoView({ behavior: 'smooth' });
+
+  // --- Unit CRUD Operations ---
+  const handleCreateUnit = async (unitData: Partial<Unit>, useTemplate?: boolean, templateData?: any) => {
+    if (!user?.company_id || !selectedProjectId) return;
+
+    const newUnit: UnitCreateRequest = {
+      name: unitData.name!,
+      type: unitData.type as BackendUnitType,
+      floor: unitData.floor || null,
+      area: unitData.area || null,
+      description: unitData.description || null
+    };
+
+    const createdUnit = await UnitService.createUnit(selectedProjectId, user.company_id, newUnit);
+
+    if (useTemplate && templateData?.template) {
+      // Apply template categories and teams
+      for (const tCategory of templateData.template.categories) {
+        const newCategory: CategoryCreateRequest = {
+          name: tCategory.name,
+          description: tCategory.description || '',
+          startDate: new Date().toISOString().split('T')[0], // Use current date for template application
+          endDate: new Date(new Date().setDate(new Date().getDate() + tCategory.duration_days)).toISOString().split('T')[0],
+          orderSequence: tCategory.order
+        };
+        const createdCategory = await CategoryService.createCategory(createdUnit.id, selectedProjectId, newCategory);
+
+        if (createdCategory && tCategory.teams) {
+          for (const tTeam of tCategory.teams) {
+            const team = teams.find(tm => tm.id === tTeam.team_id);
+            if (team) {
+              await CategoryTeamService.createCategoryTeam(createdCategory.id, {
+                teamId: team.id,
+                status: 'NOT_STARTED',
+                notes: tTeam.notes || '',
+                receptionStatus: false,
+                paymentStatus: false,
+              });
+            }
+          }
+        }
+      }
+    }
+    await loadUnits(selectedProjectId);
+  };
+
+  const handleUpdateUnit = async (unitData: Partial<Unit>) => {
+    if (!selectedProjectId || !unitData.id) return;
+    const updatedUnit: UnitUpdateRequest = {
+      name: unitData.name!,
+      type: unitData.type!.toUpperCase() as UnitUpdateRequest['type'],
+      floor: unitData.floor || null,
+      area: unitData.area || null,
+      description: unitData.description || null,
+      progressPercentage: unitData.progress || 0
+    };
+    await UnitService.updateUnit(unitData.id, selectedProjectId, updatedUnit);
+    await loadUnits(selectedProjectId);
+  };
+
+  const handleDeleteUnit = async (unitId: string) => {
+    if (!selectedProjectId || !confirm('Are you sure you want to delete this unit? This action cannot be undone.')) return;
+    await UnitService.deleteUnit(unitId, selectedProjectId);
+    await loadUnits(selectedProjectId);
+    setSelectedUnitId(null);
+    setSelectedCategoryId(null);
+    setCategories([]);
+  };
+
+  // --- Category CRUD Operations ---
+  const handleCreateCategory = async (categoryData: Partial<Category>, assignedTeams: Partial<CategoryTeam>[]) => {
+    if (!selectedUnitId || !selectedProjectId) return;
+    const newCategory: CategoryCreateRequest = {
+      name: categoryData.name!,
+      description: categoryData.description || '',
+      startDate: categoryData.start_date!,
+      endDate: categoryData.end_date!,
+      orderSequence: categoryData.order || 1
+    };
+    const createdCategory = await CategoryService.createCategory(selectedUnitId, selectedProjectId, newCategory);
+
+    if (createdCategory && assignedTeams.length > 0) {
+      for (const teamAssignment of assignedTeams) {
+        if (teamAssignment.team_id) {
+          await CategoryTeamService.createCategoryTeam(createdCategory.id, {
+            teamId: teamAssignment.team_id,
+            status: teamAssignment.status || 'NOT_STARTED',
+            receptionStatus: teamAssignment.reception_status || false,
+            paymentStatus: teamAssignment.payment_status || false,
+            notes: teamAssignment.notes || '',
+          });
+        }
+      }
+    }
+    await loadCategories(selectedUnitId);
+  };
+
+  const handleUpdateCategory = async (categoryData: Partial<Category>, assignedTeams: Partial<CategoryTeam>[]) => {
+    if (!selectedUnitId || !categoryData.id) return;
+    const updatedCategory: CategoryUpdateRequest = {
+      name: categoryData.name!,
+      description: categoryData.description || '',
+      startDate: categoryData.start_date!,
+      endDate: categoryData.end_date!,
+      orderSequence: categoryData.order || 1,
+      progressPercentage: categoryData.progress || 0
+    };
+    await CategoryService.updateCategory(categoryData.id, selectedUnitId, updatedCategory);
+
+    // Update/create/delete CategoryTeam assignments
+    const existingCategoryTeams = categories.find(c => c.id === categoryData.id)?.categoryTeams || [];
+    const newTeamIds = new Set(assignedTeams.map(at => at.team_id));
+    const existingTeamIds = new Set(existingCategoryTeams.map(ect => ect.team_id));
+
+    // Teams to remove
+    for (const existingTeam of existingCategoryTeams) {
+      if (!newTeamIds.has(existingTeam.team_id)) {
+        await CategoryTeamService.deleteCategoryTeam(existingTeam.id);
+      }
+    }
+
+    // Teams to add or update
+    for (const newTeamAssignment of assignedTeams) {
+      const existingAssignment = existingCategoryTeams.find(ect => ect.team_id === newTeamAssignment.team_id);
+      if (existingAssignment) {
+        // Update existing
+        await CategoryTeamService.updateCategoryTeam(existingAssignment.id, {
+          status: newTeamAssignment.status || 'NOT_STARTED',
+          receptionStatus: newTeamAssignment.reception_status || false,
+          paymentStatus: newTeamAssignment.payment_status || false,
+          notes: newTeamAssignment.notes || '',
+        });
+      } else if (newTeamAssignment.team_id) {
+        // Add new
+        await CategoryTeamService.createCategoryTeam(categoryData.id, {
+          teamId: newTeamAssignment.team_id,
+          status: newTeamAssignment.status || 'NOT_STARTED',
+          receptionStatus: newTeamAssignment.reception_status || false,
+          paymentStatus: newTeamAssignment.payment_status || false,
+          notes: newTeamAssignment.notes || '',
+        });
+      }
+    }
+    await loadCategories(selectedUnitId);
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (!selectedUnitId || !confirm('Are you sure you want to delete this category? This action cannot be undone.')) return;
+    await CategoryService.deleteCategory(categoryId, selectedUnitId);
+    await loadCategories(selectedUnitId);
+    setSelectedCategoryId(null);
+  };
+
+  const handleUpdateCategoryTeamStatus = async (categoryTeamId: string, newStatus: BackendTaskStatus, progressPercentage?: number) => {
+    console.log('handleUpdateCategoryTeamStatus called with:', { categoryTeamId, newStatus, progressPercentage });
+    try {
+      const updateData: CategoryTeamUpdateRequest = { status: newStatus };
+      if (typeof progressPercentage === 'number') {
+        updateData.progressPercentage = Math.max(0, Math.min(100, progressPercentage));
+      }
+      console.log('Before CategoryTeamService.updateCategoryTeam:', { categoryTeamId, updateData });
+      await CategoryTeamService.updateCategoryTeam(categoryTeamId, updateData);
+      console.log('After CategoryTeamService.updateCategoryTeam. Reloading categories...');
+      if (selectedUnitId) {
+        await loadCategories(selectedUnitId); // Reload categories to reflect change
+      }
+      console.log('Categories reloaded after status update.');
+      console.log('handleUpdateCategoryTeamStatus: Successfully updated category team status and reloaded categories.');
+    } catch (error) {
+      console.error(`Error updating category team ${categoryTeamId} status:`, error);
+      alert('Failed to update team status. Please try again.');
     }
   };
-  
-  const handleSelectCategory = async (category: Category) => {
-    setSelectedCategory(category);
-    
-    // Load category teams for this category
-    const teams = await loadCategoryTeams(category.id);
-    
-    // Update the selected category with the teams
-    setSelectedCategory({
-      ...category,
-      categoryTeams: teams
-    });
-    
-    // Expand all sections
-    setExpandedSections({
-      projects: true,
-      units: true,
-      categories: true
-    });
-    
-    // Scroll to categories section
-    if (categoriesRef.current) {
-      categoriesRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-  
-  // Toggle section expansion
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-  
-  // Modal handlers
-  const handleCreateProject = () => {
-    setEditingProject(null);
-    setShowProjectModal(true);
-  };
-  
-  const handleEditProject = (project: Project) => {
+
+
+
+  // --- Modal Handlers ---
+  const openProjectModal = (project: Project | null = null) => {
     setEditingProject(project);
     setShowProjectModal(true);
   };
-  
-  const handleCreateUnit = () => {
-    if (!selectedProject) {
-      alert('Please select a project first');
+
+  const openUnitModal = (unit: Unit | null = null) => {
+    if (!selectedProjectId) {
+      alert('Please select a project first.');
       return;
     }
-    
-    setEditingUnit(null);
-    setShowUnitModal(true);
-  };
-  
-  const handleEditUnit = (unit: Unit) => {
     setEditingUnit(unit);
     setShowUnitModal(true);
   };
-  
-  const handleCreateCategory = () => {
-    if (!selectedUnit) {
-      alert('Please select a unit first');
+
+  const openCategoryModal = (category: Category | null = null) => {
+    if (!selectedUnitId) {
+      alert('Please select a unit first.');
       return;
     }
-    
-    setEditingCategory(null);
-    setShowCategoryModal(true);
-  };
-  
-  const handleEditCategory = (category: Category) => {
     setEditingCategory(category);
     setShowCategoryModal(true);
   };
-  
-  // Save handlers
-  const handleSaveProject = async (projectData: Partial<Project>) => {
-    if (!user?.company_id) {
-      alert('User authentication required');
-      return;
-    }
-    
-    try {
-      if (editingProject) {
-        // Update existing project - convert from Project to ProjectUpdateRequest
-        const updateRequest: ProjectUpdateRequest = {
-          name: projectData.name!,
-          location: projectData.location!,
-          startDate: projectData.start_date!,
-          endDate: projectData.end_date!,
-          description: projectData.description,
-          status: projectData.status
-        };
-        
-        const updatedProject = await ProjectService.updateProject(
-          editingProject.id,
-          user.company_id,
-          updateRequest
-        );
-        
-        setProjects(projects.map(p => p.id === editingProject.id ? updatedProject : p));
-        setSelectedProject(updatedProject);
-      } else {
-        // Create new project - convert from Project to ProjectCreateRequest
-        const createRequest: ProjectCreateRequest = {
-          name: projectData.name!,
-          location: projectData.location!,
-          startDate: projectData.start_date!,
-          endDate: projectData.end_date!,
-          description: projectData.description
-        };
-        
-        const newProject = await ProjectService.createProject(
-          user.company_id,
-          createRequest
-        );
-        
-        setProjects([...projects, newProject]);
-        handleSelectProject(newProject);
-      }
-      
-      setShowProjectModal(false);
-    } catch (error) {
-      console.error('Error saving project:', error);
-      alert('Failed to save project');
-    }
-  };
-  
-  const handleSaveUnit = async (unitData: Partial<Unit>, useTemplate?: boolean, templateData?: any) => {
-    if (!user?.company_id || !selectedProject) {
-      alert('Project selection required');
-      return;
-    }
-    
-    try {
-      // Convert frontend unit type to backend enum format (UPPERCASE)
-      const backendUnitType = unitData.type?.toUpperCase() as BackendUnitType;
-      
-      // Prepare clean unit data without undefined values
-      const cleanUnitData = {
-        name: unitData.name!,
-        type: backendUnitType,
-        floor: unitData.floor === undefined ? null : unitData.floor,
-        area: unitData.area === undefined ? null : unitData.area,
-        description: unitData.description === undefined ? null : unitData.description
-      };
-      
-      console.log('Saving unit with data:', cleanUnitData);
-      
-      if (editingUnit) {
-        // Update existing unit
-        const updatedUnit = await UnitService.updateUnit(
-          editingUnit.id,
-          selectedProject.id,
-          cleanUnitData
-        );
-        
-        setUnits(units.map(u => u.id === editingUnit.id ? updatedUnit : u));
-        setSelectedUnit(updatedUnit);
-      } else {
-        // Create new unit
-        const newUnit = await UnitService.createUnit(
-          selectedProject.id,
-          user.company_id,
-          cleanUnitData
-        );
-        
-        setUnits([...units, newUnit]);
-        handleSelectUnit(newUnit);
-        
-        // If using template, apply template
-        if (useTemplate && templateData?.template) {
-          // TODO: Apply template to unit
-          console.log('Applying template to unit:', templateData.template);
-          alert(`Unit "${newUnit.name}" created successfully! Template will be applied.`);
-        } else {
-          alert(`Unit "${newUnit.name}" created successfully!`);
-        }
-      }
-      
-      setShowUnitModal(false);
-    } catch (error) {
-      console.error('Error saving unit:', error);
-      if (error instanceof Error) {
-        alert(`Failed to save unit: ${error.message}`);
-      } else {
-        alert('Failed to save unit');
-      }
-    }
-  };
-  
-  const handleCloneUnit = async (newUnitData: Partial<Unit>) => {
-    if (!user?.company_id || !selectedProject) {
-      alert('Project selection required');
-      return;
-    }
-    
-    try {
-      // Convert frontend unit type to backend enum format (UPPERCASE)
-      const backendUnitType = newUnitData.type?.toUpperCase() as BackendUnitType;
-      
-      // Prepare clean unit data without undefined values
-      const cleanUnitData = {
-        name: newUnitData.name!,
-        type: backendUnitType,
-        floor: newUnitData.floor === undefined ? null : newUnitData.floor,
-        area: newUnitData.area === undefined ? null : newUnitData.area,
-        description: newUnitData.description === undefined ? null : newUnitData.description
-      };
-      
-      console.log('Cloning unit with data:', cleanUnitData);
-      
-      const newUnit = await UnitService.createUnit(
-        selectedProject.id,
-        user.company_id,
-        cleanUnitData
-      );
-      
-      setUnits([...units, newUnit]);
-      handleSelectUnit(newUnit);
-      
-      alert(`Unit "${newUnit.name}" cloned successfully!`);
-      setShowUnitModal(false);
-    } catch (error) {
-      console.error('Error cloning unit:', error);
-      if (error instanceof Error) {
-        alert(`Failed to clone unit: ${error.message}`);
-      } else {
-        alert('Failed to clone unit');
-      }
-    }
-  };
-  
-  const handleSaveCategory = async (categoryData: Partial<Category>, teamAssignments: Partial<CategoryTeam>[]) => {
-    if (!selectedUnit) {
-      alert('Unit selection required');
-      return;
-    }
-    
-    try {
-      if (editingCategory) {
-        // Update existing category
-        const updatedCategory = await CategoryService.updateCategory(
-          editingCategory.id,
-          selectedUnit.id,
-          {
-            name: categoryData.name!,
-            description: categoryData.description,
-            startDate: categoryData.start_date!,
-            endDate: categoryData.end_date!,
-            orderSequence: categoryData.order
-          }
-        );
-        
-        // Update category teams
-        for (const teamAssignment of teamAssignments) {
-          if (teamAssignment.id) {
-            // Convert frontend status to backend enum format (UPPERCASE with underscores)
-            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
-            
-            // Update existing team assignment
-            await CategoryTeamService.updateCategoryTeam(
-              teamAssignment.id,
-              {
-                status: backendStatus,
-                receptionStatus: teamAssignment.reception_status,
-                paymentStatus: teamAssignment.payment_status,
-                notes: teamAssignment.notes
-              }
-            );
-          } else if (teamAssignment.team_id) {
-            // Convert frontend status to backend enum format (UPPERCASE with underscores)
-            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
-            
-            // Create new team assignment
-            await CategoryTeamService.createCategoryTeam(
-              updatedCategory.id,
-              {
-                teamId: teamAssignment.team_id,
-                status: backendStatus,
-                receptionStatus: teamAssignment.reception_status,
-                paymentStatus: teamAssignment.payment_status,
-                notes: teamAssignment.notes
-              }
-            );
-          }
-        }
-        
-        // Refresh categories
-        const refreshedCategories = await loadCategories(selectedUnit.id);
-        
-        // Find and select the updated category
-        const category = refreshedCategories.find(c => c.id === editingCategory.id);
-        if (category) {
-          handleSelectCategory(category);
-        }
-      } else {
-        // Create new category
-        const newCategory = await CategoryService.createCategory(
-          selectedUnit.id,
-          selectedProject!.id,
-          {
-            name: categoryData.name!,
-            description: categoryData.description,
-            startDate: categoryData.start_date!,
-            endDate: categoryData.end_date!,
-            orderSequence: categoryData.order
-          }
-        );
-        
-        // Create team assignments
-        for (const teamAssignment of teamAssignments) {
-          if (teamAssignment.team_id) {
-            // Convert frontend status to backend enum format (UPPERCASE with underscores)
-            const backendStatus = teamAssignment.status?.toUpperCase().replace(' ', '_') as BackendTaskStatus;
-            
-            await CategoryTeamService.createCategoryTeam(
-              newCategory.id,
-              {
-                teamId: teamAssignment.team_id,
-                status: backendStatus,
-                receptionStatus: teamAssignment.reception_status,
-                paymentStatus: teamAssignment.payment_status,
-                notes: teamAssignment.notes
-              }
-            );
-          }
-        }
-        
-        // Refresh categories
-        const refreshedCategories = await loadCategories(selectedUnit.id);
-        
-        // Find and select the new category
-        const category = refreshedCategories.find(c => c.id === newCategory.id);
-        if (category) {
-          handleSelectCategory(category);
-        }
-      }
-      
-      setShowCategoryModal(false);
-    } catch (error) {
-      console.error('Error saving category:', error);
-      alert('Failed to save category');
-    }
-  };
-  
-  // Delete handlers
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.') || !user?.company_id) {
-      return;
-    }
-    
-    try {
-      await ProjectService.deleteProject(projectId, user.company_id);
-      
-      // Remove from projects list
-      setProjects(projects.filter(p => p.id !== projectId));
-      
-      // If this was the selected project, clear selection
-      if (selectedProject?.id === projectId) {
-        setSelectedProject(null);
-        setSelectedUnit(null);
-        setSelectedCategory(null);
-        setUnits([]);
-        setCategories([]);
-        setCategoryTeams([]);
-      }
-    } catch (error) {
-      console.error('Error deleting project:', error);
-      alert('Failed to delete project');
-    }
-  };
-  
-  const handleDeleteUnit = async (unitId: string) => {
-    if (!confirm('Are you sure you want to delete this unit? This action cannot be undone.') || !selectedProject) {
-      return;
-    }
-    
-    try {
-      await UnitService.deleteUnit(unitId, selectedProject.id);
-      
-      // Remove from units list
-      setUnits(units.filter(u => u.id !== unitId));
-      
-      // If this was the selected unit, clear selection
-      if (selectedUnit?.id === unitId) {
-        setSelectedUnit(null);
-        setSelectedCategory(null);
-        setCategories([]);
-        setCategoryTeams([]);
-      }
-    } catch (error) {
-      console.error('Error deleting unit:', error);
-      alert('Failed to delete unit');
-    }
-  };
-  
-  const handleDeleteCategory = async (categoryId: string) => {
-    if (!confirm('Are you sure you want to delete this category? This action cannot be undone.') || !selectedUnit) {
-      return;
-    }
-    
-    try {
-      await CategoryService.deleteCategory(categoryId, selectedUnit.id);
-      
-      // Remove from categories list
-      setCategories(categories.filter(c => c.id !== categoryId));
-      
-      // If this was the selected category, clear selection
-      if (selectedCategory?.id === categoryId) {
-        setSelectedCategory(null);
-        setCategoryTeams([]);
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      alert('Failed to delete category');
-    }
-  };
-  
-  // Render tree view
-  const renderTreeView = () => {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
-          <h2 className="text-lg font-medium text-gray-900">Project Hierarchy</h2>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setViewMode('card')}
-              className={`p-2 rounded-lg ${viewMode === 'card' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-              title="Card View"
-            >
-              <LayoutGrid className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('tree')}
-              className={`p-2 rounded-lg ${viewMode === 'tree' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-              title="Tree View"
-            >
-              <List className="h-5 w-5" />
-            </button>
+
+  // --- Render Helpers ---
+  const renderProjectList = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {projects.length > 0 ? (
+        projects.map((project) => (
+          <div key={project.id} ref={el => projectRefs.current[project.id] = el}>
+            <ProjectCard
+              project={project}
+              onClick={() => {
+                if (activeView === 'tree') {
+                  setSelectedProjectId(project.id);
+                } else {
+                  // In card view, clicking a project card should load its units
+                  setSelectedProjectId(project.id);
+                  loadUnits(project.id);
+                  // Switch to tree view to show the project hierarchy
+                  setActiveView('tree');
+                }
+              }}
+              onEdit={openProjectModal}
+              onDelete={handleDeleteProject}
+            />
           </div>
+        ))
+      ) : (
+        <div className="col-span-full text-center py-12 bg-gray-50 rounded-lg">
+          <Building2 className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No projects found</h3>
+          <p className="text-gray-600 mb-4">Get started by creating your first project</p>
+          <button onClick={() => openProjectModal()} className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+            <Plus className="h-4 w-4 mr-2" /> Create Project
+          </button>
         </div>
-        
-        <div className="p-4">
-          {/* Projects */}
-          {projects.map(project => (
-            <div key={project.id} className="mb-2">
-              <div 
-                className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
-                  selectedProject?.id === project.id ? 'bg-blue-100' : 'hover:bg-gray-100'
-                }`}
-                onClick={() => handleSelectProject(project)}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedSections(prev => ({
-                      ...prev,
-                      [project.id]: !prev[project.id]
-                    }));
-                  }}
-                >
-                  {expandedSections[project.id] ? (
-                    <ChevronDown className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-                <Building2 className="h-5 w-5 text-blue-500" />
-                <span className="font-medium">{project.name}</span>
-                <span className="text-gray-500 text-sm">{project.location}</span>
-                <div className="flex ml-auto">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditProject(project);
-                    }}
-                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProject(project.id);
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              
-              {/* Units */}
-              {expandedSections[project.id] && selectedProject?.id === project.id && (
-                <div className="ml-8">
-                  {units.length > 0 ? (
-                    units.map(unit => (
-                      <div key={unit.id} className="mb-2">
-                        <div 
-                          className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
-                            selectedUnit?.id === unit.id ? 'bg-green-100' : 'hover:bg-gray-100'
-                          }`}
-                          onClick={() => handleSelectUnit(unit)}
-                        >
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedSections(prev => ({
-                                ...prev,
-                                [unit.id]: !prev[unit.id]
-                              }));
-                            }}
-                          >
-                            {expandedSections[unit.id] ? (
-                              <ChevronDown className="h-5 w-5 text-gray-400" />
-                            ) : (
-                              <ChevronRight className="h-5 w-5 text-gray-400" />
-                            )}
-                          </button>
-                          <Home className="h-5 w-5 text-green-500" />
-                          <span className="font-medium">{unit.name}</span>
-                          <span className="text-gray-500 text-sm">{unit.type.toUpperCase()}</span>
-                          <div className="flex ml-auto">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditUnit(unit);
-                              }}
-                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteUnit(unit.id);
-                              }}
-                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Categories */}
-                        {expandedSections[unit.id] && selectedUnit?.id === unit.id && (
-                          <div className="ml-8">
-                            {categories.length > 0 ? (
-                              categories.map(category => (
-                                <div key={category.id} className="mb-2">
-                                  <div 
-                                    className={`flex items-center space-x-2 p-2 rounded-lg cursor-pointer ${
-                                      selectedCategory?.id === category.id ? 'bg-orange-100' : 'hover:bg-gray-100'
-                                    }`}
-                                    onClick={() => handleSelectCategory(category)}
-                                  >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setExpandedSections(prev => ({
-                                          ...prev,
-                                          [category.id]: !prev[category.id]
-                                        }));
-                                      }}
-                                    >
-                                      {expandedSections[category.id] ? (
-                                        <ChevronDown className="h-5 w-5 text-gray-400" />
-                                      ) : (
-                                        <ChevronRight className="h-5 w-5 text-gray-400" />
-                                      )}
-                                    </button>
-                                    <Calendar className="h-5 w-5 text-orange-500" />
-                                    <span className="font-medium">{category.name}</span>
-                                    <span className="text-gray-500 text-sm">
-                                      {categoryTeams.filter(ct => ct.category_id === category.id).length} teams
-                                    </span>
-                                    <div className="flex ml-auto">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleEditCategory(category);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                                      >
-                                        <Edit className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteCategory(category.id);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Teams */}
-                                  {expandedSections[category.id] && selectedCategory?.id === category.id && (
-                                    <div className="ml-8">
-                                      {categoryTeams.length > 0 ? (
-                                        categoryTeams.map(team => (
-                                          <div 
-                                            key={team.id} 
-                                            className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100"
-                                          >
-                                            <div 
-                                              className="w-3 h-3 rounded-full"
-                                              style={{ backgroundColor: team.team?.color }}
-                                            ></div>
-                                            <Users className="h-5 w-5 text-purple-500" />
-                                            <span className="font-medium">{team.team?.name}</span>
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                              team.status === 'done' ? 'bg-green-100 text-green-800' :
-                                              team.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-                                              team.status === 'delayed' ? 'bg-red-100 text-red-800' :
-                                              'bg-gray-100 text-gray-800'
-                                            }`}>
-                                              {team.status.replace('_', ' ').toUpperCase()}
-                                            </span>
-                                          </div>
-                                        ))
-                                      ) : (
-                                        <div className="text-sm text-gray-500 italic p-2">
-                                          No teams assigned
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="flex items-center space-x-2 p-2">
-                                <span className="text-gray-500 italic">No categories found.</span>
-                                <button
-                                  onClick={() => handleCreateCategory()}
-                                  className="text-blue-600 hover:text-blue-800 text-sm"
-                                >
-                                  Add Category
-                                </button>
-                              </div>
-                            )}
-                            <div className="mt-2">
-                              <button
-                                onClick={() => handleCreateCategory()}
-                                className="flex items-center text-blue-600 hover:text-blue-800 p-2"
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add New Category
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex items-center space-x-2 p-2">
-                      <span className="text-gray-500 italic">No units found.</span>
-                      <button
-                        onClick={() => handleCreateUnit()}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Add Unit
-                      </button>
-                    </div>
-                  )}
-                  <div className="mt-2">
-                    <button
-                      onClick={() => handleCreateUnit()}
-                      className="flex items-center text-blue-600 hover:text-blue-800 p-2"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add New Unit
-                    </button>
+      )}
+    </div>
+  );
+
+  const renderTreeView = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Projects Column */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <Building2 className="h-5 w-5 mr-2" /> Projects
+          <button onClick={() => openProjectModal()} className="ml-auto p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" title="Add Project"><Plus className="h-4 w-4" /></button>
+        </h3>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {projects.length > 0 ? (
+            projects.map((project) => (
+              <div key={project.id} ref={el => projectRefs.current[project.id] = el}
+                className={`p-3 rounded-lg cursor-pointer transition-colors ${selectedProjectId === project.id ? 'bg-blue-50 border-l-4 border-blue-600' : 'hover:bg-gray-50'}`}
+                onClick={() => setSelectedProjectId(project.id)}>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-900">{project.name}</span>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={(e) => { e.stopPropagation(); openProjectModal(project); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" title="Edit Project"><Edit className="h-4 w-4" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-red-200" title="Delete Project"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
-          <div className="mt-4">
-            <button
-              onClick={handleCreateProject}
-              className="flex items-center text-blue-600 hover:text-blue-800 p-2"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add New Project
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-  
-  // Render card view
-  const renderCardView = () => {
-    return (
-      <>
-        {/* Projects Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div 
-            className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-            onClick={() => toggleSection('projects')}
-          >
-            <div className="flex items-center">
-              <Building2 className="h-5 w-5 text-gray-500 mr-2" />
-              <h2 className="text-lg font-medium text-gray-900">Projects</h2>
-              <span className="ml-2 text-sm text-gray-500">({projects.length})</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCreateProject();
-                }}
-                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Project
-              </button>
-              <button onClick={(e) => {
-                e.stopPropagation();
-                toggleSection('projects');
-              }}>
-                {expandedSections.projects ? (
-                  <ChevronDown className="h-5 w-5 text-gray-500" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-gray-500" />
-                )}
-              </button>
-            </div>
-          </div>
-          
-          {expandedSections.projects && (
-            <div className="p-4">
-              <div className="mb-4">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Search projects..."
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
+                <div className="text-sm text-gray-500">{project.location}</div>
               </div>
-              
-              <div className="space-y-4">
-                {projects.map((project) => (
-                  <div 
-                    key={project.id}
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      selectedProject?.id === project.id 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                    onClick={() => handleSelectProject(project)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium text-gray-900">{project.name}</h3>
-                        <div className="flex items-center text-sm text-gray-600 mt-1">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {project.location}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          project.status === 'active' ? 'bg-green-100 text-green-800' :
-                          project.status === 'planning' ? 'bg-blue-100 text-blue-800' :
-                          project.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                        </span>
-                        <div className="flex">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditProject(project);
-                            }}
-                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteProject(project.id);
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-4 mt-3">
-                      <div className="text-center">
-                        <div className="text-sm font-medium text-gray-900">{project.progress || 0}%</div>
-                        <div className="text-xs text-gray-600">Progress</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-sm font-medium text-gray-900">
-                          {new Date(project.end_date).toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-gray-600">End Date</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-sm font-medium text-gray-900">{project.unit_count || 0}</div>
-                        <div className="text-xs text-gray-600">Units</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                {projects.length === 0 && !loading && (
-                  <div className="text-center py-8">
-                    <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">No projects found</h3>
-                    <p className="text-gray-600 mb-4">Get started by creating your first project</p>
-                    <button
-                      onClick={handleCreateProject}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Project
-                    </button>
-                  </div>
-                )}
-                
-                {loading && (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                    <p className="text-gray-600">Loading projects...</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            ))
+          ) : (
+            <p className="text-gray-500 text-sm">No projects available.</p>
           )}
         </div>
+      </div>
 
-        {/* Units Section */}
-        {selectedProject && (
-          <div 
-            ref={unitsRef}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
-          >
-            <div 
-              className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-              onClick={() => toggleSection('units')}
-            >
-              <div className="flex items-center">
-                <Home className="h-5 w-5 text-gray-500 mr-2" />
-                <h2 className="text-lg font-medium text-gray-900">Units</h2>
-                <span className="ml-2 text-sm text-gray-500">({units.length})</span>
-                <span className="ml-2 text-sm text-blue-600">
-                  Project: {selectedProject.name}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCreateUnit();
-                  }}
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Unit
-                </button>
-                <button onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSection('units');
-                }}>
-                  {expandedSections.units ? (
-                    <ChevronDown className="h-5 w-5 text-gray-500" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-gray-500" />
-                  )}
-                </button>
-              </div>
-            </div>
-            
-            {expandedSections.units && (
-              <div className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {units.map((unit) => (
-                    <UnitCard
-                      key={unit.id}
-                      unit={unit}
-                      categories={categories.filter(c => c.unit_id === unit.id)}
-                      onEdit={() => handleEditUnit(unit)}
-                      onDelete={() => handleDeleteUnit(unit.id)}
-                      onAddCategory={() => {
-                        setSelectedUnit(unit);
-                        handleCreateCategory();
-                      }}
-                      onSelect={() => handleSelectUnit(unit)}
-                    />
-                  ))}
-                  
-                  {units.length === 0 && !loading && (
-                    <div className="col-span-full text-center py-8">
-                      <Home className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">No units found</h3>
-                      <p className="text-gray-600 mb-4">Add units to organize your project</p>
-                      <button
-                        onClick={handleCreateUnit}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Unit
-                      </button>
+      {/* Units Column */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <Home className="h-5 w-5 mr-2" /> Units
+          <button onClick={() => openUnitModal()} className="ml-auto p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" title="Add Unit" disabled={!selectedProjectId}><Plus className="h-4 w-4" /></button>
+        </h3>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {selectedProjectId ? (
+            units.length > 0 ? (
+              units.map((unit) => (
+                <div key={unit.id} ref={el => unitRefs.current[unit.id] = el}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${selectedUnitId === unit.id ? 'bg-blue-50 border-l-4 border-blue-600' : 'hover:bg-gray-50'}`}
+                  onClick={() => setSelectedUnitId(unit.id)}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-900">{unit.name}</span>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={(e) => { e.stopPropagation(); openUnitModal(unit); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" title="Edit Unit"><Edit className="h-4 w-4" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteUnit(unit.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-red-200" title="Delete Unit"><Trash2 className="h-4 w-4" /></button>
                     </div>
-                  )}
-                  
-                  {loading && (
-                    <div className="col-span-full text-center py-8">
-                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                      <p className="text-gray-600">Loading units...</p>
-                    </div>
-                  )}
+                  </div>
+                  <div className="text-sm text-gray-500">{unit.type} {unit.floor ? `(${unit.floor})` : ''}</div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Categories Section */}
-        {selectedUnit && (
-          <div 
-            ref={categoriesRef}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
-          >
-            <div 
-              className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200 cursor-pointer"
-              onClick={() => toggleSection('categories')}
-            >
-              <div className="flex items-center">
-                <Calendar className="h-5 w-5 text-gray-500 mr-2" />
-                <h2 className="text-lg font-medium text-gray-900">Categories</h2>
-                <span className="ml-2 text-sm text-gray-500">({categories.length})</span>
-                <span className="ml-2 text-sm text-blue-600">
-                  Unit: {selectedUnit.name}
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCreateCategory();
-                  }}
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Category
-                </button>
-                <button onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSection('categories');
-                }}>
-                  {expandedSections.categories ? (
-                    <ChevronDown className="h-5 w-5 text-gray-500" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-gray-500" />
-                  )}
-                </button>
-              </div>
-            </div>
-            
-            {expandedSections.categories && (
-              <div className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {categories.map((category) => (
-                    <CategoryCard
-                      key={category.id}
-                      category={category}
-                      categoryTeams={
-                        selectedCategory?.id === category.id
-                          ? categoryTeams
-                          : []
-                      }
-                      onEdit={() => handleEditCategory(category)}
-                      onDelete={() => handleDeleteCategory(category.id)}
-                      onSelect={() => handleSelectCategory(category)}
-                    />
-                  ))}
-                  
-                  {categories.length === 0 && !loading && (
-                    <div className="col-span-full text-center py-8">
-                      <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">No categories found</h3>
-                      <p className="text-gray-600 mb-4">Add categories to organize work in this unit</p>
-                      <button
-                        onClick={handleCreateCategory}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Category
-                      </button>
-                    </div>
-                  )}
-                  
-                  {loading && (
-                    <div className="col-span-full text-center py-8">
-                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                      <p className="text-gray-600">Loading categories...</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </>
-    );
-  };
-  
-  // Project Modal Component
-  const ProjectModal: React.FC = () => {
-    const [formData, setFormData] = useState({
-      name: '',
-      location: '',
-      startDate: '',
-      endDate: '',
-      description: '',
-      status: 'planning'
-    });
-    
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    
-    useEffect(() => {
-      if (editingProject) {
-        setFormData({
-          name: editingProject.name,
-          location: editingProject.location,
-          startDate: editingProject.start_date,
-          endDate: editingProject.end_date,
-          description: editingProject.description || '',
-          status: editingProject.status
-        });
-      } else {
-        // Set default dates for new projects
-        const today = new Date();
-        const nextYear = new Date();
-        nextYear.setFullYear(today.getFullYear() + 1);
-        
-        setFormData({
-          name: '',
-          location: '',
-          startDate: today.toISOString().split('T')[0],
-          endDate: nextYear.toISOString().split('T')[0],
-          description: '',
-          status: 'planning'
-        });
-      }
-    }, [editingProject, showProjectModal]);
-    
-    const validateForm = () => {
-      const newErrors: Record<string, string> = {};
-      
-      if (!formData.name.trim()) {
-        newErrors.name = 'Project name is required';
-      }
-      
-      if (!formData.location.trim()) {
-        newErrors.location = 'Location is required';
-      }
-      
-      if (!formData.startDate) {
-        newErrors.startDate = 'Start date is required';
-      }
-      
-      if (!formData.endDate) {
-        newErrors.endDate = 'End date is required';
-      }
-      
-      if (formData.startDate && formData.endDate && new Date(formData.startDate) >= new Date(formData.endDate)) {
-        newErrors.endDate = 'End date must be after start date';
-      }
-      
-      setErrors(newErrors);
-      return Object.keys(newErrors).length === 0;
-    };
-    
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      
-      if (!validateForm()) {
-        return;
-      }
-      
-      // Create the appropriate request object based on whether we're editing or creating
-      if (editingProject) {
-        // For updating an existing project
-        const updateRequest: ProjectUpdateRequest = {
-          name: formData.name,
-          location: formData.location,
-          startDate: formData.startDate,
-          endDate: formData.endDate,
-          description: formData.description,
-          status: formData.status as Project['status']
-        };
-        
-        handleSaveProject({
-          ...editingProject,
-          name: formData.name,
-          location: formData.location,
-          start_date: formData.startDate,
-          end_date: formData.endDate,
-          description: formData.description,
-          status: formData.status as Project['status']
-        });
-      } else {
-        // For creating a new project
-        const createRequest: ProjectCreateRequest = {
-          name: formData.name,
-          location: formData.location,
-          startDate: formData.startDate,
-          endDate: formData.endDate,
-          description: formData.description,
-          status: formData.status
-        };
-        
-        handleSaveProject({
-          name: formData.name,
-          location: formData.location,
-          start_date: formData.startDate,
-          end_date: formData.endDate,
-          description: formData.description,
-          status: formData.status as Project['status']
-        });
-      }
-    };
-    
-    if (!showProjectModal) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg w-full max-w-md">
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {editingProject ? 'Edit Project' : 'Create New Project'}
-            </h3>
-            <button
-              onClick={() => setShowProjectModal(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-          
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Project Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="e.g., Résidence Azure"
-              />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Location *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.location ? 'border-red-300' : 'border-gray-300'
-                }`}
-                placeholder="e.g., Casablanca"
-              />
-              {errors.location && (
-                <p className="mt-1 text-sm text-red-600">{errors.location}</p>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.startDate ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                {errors.startDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.endDate ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                {errors.endDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
-                )}
-              </div>
-            </div>
-            
-            {editingProject && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="planning">Planning</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="on_hold">On Hold</option>
-                </select>
-              </div>
-            )}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Project description..."
-              />
-            </div>
-            
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowProjectModal(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                <Save className="h-4 w-4 mr-2 inline" />
-                {editingProject ? 'Update Project' : 'Create Project'}
-              </button>
-            </div>
-          </form>
+              ))
+            ) : (
+              <p className="text-gray-500 text-sm">No units for this project.</p>
+            )
+          ) : (
+            <p className="text-gray-500 text-sm">Select a project to view units.</p>
+          )}
         </div>
       </div>
-    );
+
+      {/* Categories Column */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <ListTree className="h-5 w-5 mr-2" /> Categories
+          <button onClick={() => openCategoryModal()} className="ml-auto p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" title="Add Category" disabled={!selectedUnitId}><Plus className="h-4 w-4" /></button>
+        </h3>
+        {selectedUnitId && categories.length > 0 && (
+          <div className="mb-4 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search categories..."
+              value={categorySearchTerm}
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              onChange={(e) => setCategorySearchTerm(e.target.value)}
+            />
+          </div>
+        )}
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {selectedUnitId ? (
+            categories.length > 0 ? (
+              categories
+                .filter(category => {
+                  // Filter by search term only
+                  return categorySearchTerm === '' || 
+                    category.name.toLowerCase().includes(categorySearchTerm.toLowerCase());
+                })
+                .map((category) => (
+                  <div key={category.id} ref={el => categoryRefs.current[category.id] = el}
+                    className={`${selectedCategoryId === category.id ? 'ring-2 ring-blue-500' : ''}`}
+                    onClick={() => setSelectedCategoryId(category.id)}>
+                    <CategoryCard
+                      category={category}
+                      categoryTeams={category.categoryTeams || []}
+                      onEdit={() => openCategoryModal(category)}
+                      onDelete={() => handleDeleteCategory(category.id)}
+                      onSelect={() => setSelectedCategoryId(category.id)}
+                      onUpdateCategoryTeamStatus={handleUpdateCategoryTeamStatus}
+                      isExpanded={!!expandedCategories[category.id]}
+                      onToggleExpand={() => setExpandedCategories(prev => ({ ...prev, [category.id]: !prev[category.id] }))}
+                    />
+                  </div>
+                ))
+            ) : (
+              <p className="text-gray-500 text-sm">No categories for this unit.</p>
+            )
+          ) : (
+            <p className="text-gray-500 text-sm">Select a unit to view categories.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCardView = () => (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-900">All Projects</h2>
+      {renderProjectList()}
+
+      {/* Units Section (if a project is selected in card view, could show its units here) */}
+      {/* For simplicity, in card view, we'll just show all projects.
+          Detailed unit/category views would be accessed by clicking into a project card.
+          This is a design choice to keep card view flat. */}
+    </div>
+  );
+
+  // Helper for CategoryTeam status display
+  const getStatusColorForCategoryTeam = (status: BackendTaskStatus) => {
+    const colors = {
+      'NOT_STARTED': 'bg-gray-100 text-gray-800',
+      'IN_PROGRESS': 'bg-yellow-100 text-yellow-800',
+      'DONE': 'bg-green-100 text-green-800',
+      'DELAYED': 'bg-red-100 text-red-800'
+    };
+    return colors[status] || colors.NOT_STARTED;
   };
-  
+
+  const getStatusIconForCategoryTeam = (status: BackendTaskStatus) => {
+    switch (status) {
+      case 'DONE': return <CheckCircle className="h-3 w-3 text-green-600" />;
+      case 'IN_PROGRESS': return <Clock className="h-3 w-3 text-yellow-600" />;
+      case 'DELAYED': return <AlertTriangle className="h-3 w-3 text-red-600" />;
+      case 'NOT_STARTED': return <X className="h-3 w-3 text-gray-400" />;
+      default: return <X className="h-3 w-3 text-gray-400" />;
+    }
+  };
+
+  const getNextStatusForCategoryTeam = (currentStatus: BackendTaskStatus): BackendTaskStatus => {
+    switch (currentStatus) {
+      case 'NOT_STARTED': return 'IN_PROGRESS';
+      case 'IN_PROGRESS': return 'DONE';
+      case 'DONE': return 'NOT_STARTED';
+      case 'DELAYED': return 'IN_PROGRESS';
+      default: return 'NOT_STARTED';
+    }
+  };
+
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1564,24 +793,10 @@ const Projects: React.FC = () => {
             Manage your construction projects, units, and categories
           </p>
         </div>
-        <div className="flex items-center space-x-2 mt-4 sm:mt-0">
+        <div className="flex items-center space-x-3 mt-4 sm:mt-0">
           <button
-            onClick={() => setViewMode('card')}
-            className={`p-2 rounded-lg ${viewMode === 'card' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-            title="Card View"
-          >
-            <LayoutGrid className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setViewMode('tree')}
-            className={`p-2 rounded-lg ${viewMode === 'tree' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-            title="Tree View"
-          >
-            <List className="h-5 w-5" />
-          </button>
-          <button
-            onClick={handleCreateProject}
-            className="ml-2 inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            onClick={() => openProjectModal()}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             <Plus className="h-4 w-4 mr-2" />
             New Project
@@ -1589,32 +804,114 @@ const Projects: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content */}
-      {viewMode === 'tree' ? renderTreeView() : renderCardView()}
+      {/* Search and Filter */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            />
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <Filter className="h-5 w-5 text-gray-400" />
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as Project['status'] | 'all')}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="PLANNING">Planning</option>
+                <option value="ACTIVE">Active</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="ON_HOLD">On Hold</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+            <div className="flex items-center space-x-2">
+              <ListTree className="h-5 w-5 text-gray-400" />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search categories..."
+                  value={categorySearchTerm}
+                  onChange={(e) => setCategorySearchTerm(e.target.value)}
+                  className="pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setActiveView('card')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium ${activeView === 'card' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                Card View
+              </button>
+              <button
+                onClick={() => setActiveView('tree')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium ${activeView === 'tree' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                Tree View
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Loading/Error States */}
+      {loading && (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading projects...</p>
+        </div>
+      )}
+      {error && !loading && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-center">
+          {error}
+        </div>
+      )}
+
+      {/* Content based on active view */}
+      {!loading && !error && (
+        activeView === 'card' ? renderCardView() : renderTreeView()
+      )}
 
       {/* Modals */}
-      <ProjectModal />
-      
+      <ProjectModal
+        isOpen={showProjectModal}
+        onClose={() => setShowProjectModal(false)}
+        onSave={editingProject ? handleUpdateProject : handleCreateProject}
+        project={editingProject}
+      />
       <UnitModal
         isOpen={showUnitModal}
         onClose={() => setShowUnitModal(false)}
-        onSave={handleSaveUnit}
-        onCloneUnit={handleCloneUnit}
-        projectId={selectedProject?.id || ''}
-        projectName={selectedProject?.name || ''}
-        unit={editingUnit || undefined}
+        onSave={editingUnit ? handleUpdateUnit : handleCreateUnit}
+        projectId={selectedProjectId || ''}
+        projectName={projects.find(p => p.id === selectedProjectId)?.name || ''}
+        unit={editingUnit}
         availableUnits={units}
         availableTemplates={templates}
       />
-      
       <CategoryModal
         isOpen={showCategoryModal}
         onClose={() => setShowCategoryModal(false)}
-        onSave={handleSaveCategory}
-        unitId={selectedUnit?.id || ''}
-        unitName={selectedUnit?.name || ''}
-        category={editingCategory || undefined}
-        existingTeams={categoryTeams}
+        onSave={editingCategory ? handleUpdateCategory : handleCreateCategory}
+        unitId={selectedUnitId || ''}
+        unitName={units.find(u => u.id === selectedUnitId)?.name || ''}
+        category={editingCategory}
+        existingTeams={editingCategory?.categoryTeams || []}
         availableTeams={teams}
       />
     </div>

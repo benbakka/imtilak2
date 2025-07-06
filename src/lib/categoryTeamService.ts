@@ -53,7 +53,18 @@ export class CategoryTeamService {
     id: string,
     data: CategoryTeamUpdateRequest
   ): Promise<CategoryTeam> {
-    return apiClient.put<CategoryTeam>(`/category-teams/${id}`, data);
+    try {
+      // Convert string ID to number for backend compatibility
+      const numericId = parseInt(id, 10);
+      if (isNaN(numericId)) {
+        throw new Error(`Invalid category team ID: ${id}`);
+      }
+      console.log('Updating category team with ID:', numericId, 'and data:', data);
+      return apiClient.put<CategoryTeam>(`/category-teams/${numericId}`, data);
+    } catch (error) {
+      console.error('Error in updateCategoryTeam:', error);
+      throw error;
+    }
   }
 
   static async deleteCategoryTeam(id: string): Promise<void> {

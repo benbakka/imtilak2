@@ -1,13 +1,15 @@
 import React from 'react';
-import { Calendar, MapPin, Users, AlertTriangle, Home } from 'lucide-react';
+import { Calendar, MapPin, Users, AlertTriangle, Home, Edit, Trash2 } from 'lucide-react';
 import { Project } from '../../types';
 
 interface ProjectCardProps {
   project: Project;
   onClick?: () => void;
+  onEdit?: (project: Project) => void;
+  onDelete?: (projectId: string) => void;
 }
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, onEdit, onDelete }) => {
   const getStatusColor = (status: string, progress: number) => {
     const statusLower = status.toLowerCase();
     if (statusLower === 'completed') return 'bg-green-100 text-green-800';
@@ -25,7 +27,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
 
   return (
     <div 
-      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer transform hover:-translate-y-1"
+      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer transform hover:-translate-y-1 relative"
       onClick={onClick}
     >
       <div className="flex items-start justify-between mb-4">
@@ -59,12 +61,40 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick }) => {
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center text-gray-600">
           <Calendar className="h-4 w-4 mr-1" />
-          {new Date(project.end_date).toLocaleDateString()}
+          {(project.start_date && !isNaN(new Date(project.start_date).getTime()) ? new Date(project.start_date).toLocaleDateString() : 'No Start Date')} - {(project.end_date && !isNaN(new Date(project.end_date).getTime()) ? new Date(project.end_date).toLocaleDateString() : 'No End Date')}
         </div>
         <div className="flex items-center text-gray-600">
           <Users className="h-4 w-4 mr-1" />
-          {project.active_team_count || 0} teams
+          {typeof project.active_team_count === 'number' && project.active_team_count !== null ? project.active_team_count : (project.active_team_count === 0 ? 0 : '—')} teams
         </div>
+      </div>
+      
+      {/* Edit and Delete buttons */}
+      <div className="absolute top-2 right-2 flex space-x-1">
+        {onEdit && (
+          <button 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              onEdit(project); 
+            }} 
+            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-blue-200" 
+            title="Edit Project"
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+        )}
+        {onDelete && (
+          <button 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              onDelete(project.id); 
+            }} 
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-transparent hover:border-red-200" 
+            title="Delete Project"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );

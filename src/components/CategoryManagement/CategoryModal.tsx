@@ -8,7 +8,7 @@ interface CategoryModalProps {
   onSave: (category: Partial<Category>, teams: Partial<CategoryTeam>[]) => void;
   unitId: string;
   unitName: string;
-  category?: Category;
+  category?: Category | null; // Changed to allow null
   existingTeams?: CategoryTeam[];
   availableTeams: Team[];
 }
@@ -60,7 +60,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({
   const addTeam = () => {
     setAssignedTeams([...assignedTeams, {
       team_id: '',
-      status: 'not_started',
+      status: 'NOT_STARTED', // Changed to uppercase
       reception_status: false,
       payment_status: false,
       notes: '',
@@ -289,14 +289,14 @@ const CategoryModal: React.FC<CategoryModalProps> = ({
                           Status
                         </label>
                         <select
-                          value={teamAssignment.status || 'not_started'}
+                          value={teamAssignment.status || 'NOT_STARTED'}
                           onChange={(e) => updateTeam(index, 'status', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
-                          <option value="not_started">Not Started</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="done">Done</option>
-                          <option value="delayed">Delayed</option>
+                          <option value="NOT_STARTED">Not Started</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="DONE">Done</option>
+                          <option value="DELAYED">Delayed</option>
                         </select>
                       </div>
 

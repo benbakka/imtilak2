@@ -84,9 +84,12 @@ public class CategoryTeamController {
             @PathVariable Long id,
             @Valid @RequestBody CategoryTeamUpdateDTO dto) {
         
-        return categoryTeamService.updateCategoryTeam(id, dto)
-                .map(categoryTeam -> ResponseEntity.ok(categoryTeam))
-                .orElse(ResponseEntity.notFound().build());
+        try {
+            CategoryTeam updatedCategoryTeam = categoryTeamService.updateCategoryTeam(id, dto);
+            return ResponseEntity.ok(updatedCategoryTeam);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
     
     /**

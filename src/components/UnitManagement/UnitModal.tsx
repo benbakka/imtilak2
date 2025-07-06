@@ -10,7 +10,7 @@ interface UnitModalProps {
   onSave: (unit: Partial<Unit>, useTemplate?: boolean, templateData?: any) => void;
   projectId: string;
   projectName: string;
-  unit?: Unit;
+  unit?: Unit | null; // Changed to allow null
   availableUnits?: Unit[]; // For cloning
   availableTemplates?: UnitTemplate[]; // For templates
   onCloneUnit?: (newUnitData: Partial<Unit>) => void;

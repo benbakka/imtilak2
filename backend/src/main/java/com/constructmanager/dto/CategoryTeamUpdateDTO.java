@@ -1,6 +1,8 @@
 package com.constructmanager.dto;
 
 import com.constructmanager.entity.CategoryTeam;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -10,10 +12,10 @@ public class CategoryTeamUpdateDTO {
     private CategoryTeam.TaskStatus status;
     private Boolean receptionStatus;
     private Boolean paymentStatus;
-    
-    @Size(max = 1000, message = "Notes must not exceed 1000 characters")
     private String notes;
     
+    @Min(value = 0, message = "Progress percentage must be at least 0")
+    @Max(value = 100, message = "Progress percentage must be at most 100")
     private Integer progressPercentage;
     
     // Constructors

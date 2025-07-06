@@ -47,6 +47,7 @@ com\constructmanager\dto\CategoryDetailDTO.class
 com\constructmanager\dto\UserCreateDTO.class
 com\constructmanager\dto\PaymentSummaryDTO.class
 com\constructmanager\dto\PaymentUpdateDTO.class
+com\constructmanager\exception\ResourceNotFoundException.class
 com\constructmanager\dto\AnalyticsSummaryDTO.class
 com\constructmanager\entity\User$UserRole.class
 com\constructmanager\dto\UnitDetailDTO.class
