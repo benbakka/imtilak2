@@ -5,6 +5,7 @@ import html2canvas from 'html2canvas';
 import { useAuth } from '../contexts/AuthContext';
 import { ReportService, ReportData, ReportProject } from '../lib/reportService';
 import { ProjectService } from '../lib/projectService';
+import { formatDateForDisplay, calculateDurationInDays } from '../utils/dateFormatter';
 
 const Reports: React.FC = () => {
   const { user } = useAuth();
@@ -290,16 +291,16 @@ const Reports: React.FC = () => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Start Date:</span>
-                    <span className="font-medium">{new Date(project.start_date).toLocaleDateString()}</span>
+                    <span className="font-medium">{formatDateForDisplay(project.start_date, undefined, 'No Start Date')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">End Date:</span>
-                    <span className="font-medium">{new Date(project.end_date).toLocaleDateString()}</span>
+                    <span className="font-medium">{formatDateForDisplay(project.end_date, undefined, 'No End Date')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Duration:</span>
                     <span className="font-medium">
-                      {Math.ceil((new Date(project.end_date).getTime() - new Date(project.start_date).getTime()) / (1000 * 60 * 60 * 24))} days
+                      {calculateDurationInDays(project.start_date, project.end_date)}
                     </span>
                   </div>
                 </div>

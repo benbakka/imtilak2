@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -86,4 +87,6 @@ public interface UnitRepository extends JpaRepository<Unit, Long> {
      */
     @Query("SELECT COUNT(u) FROM Unit u WHERE u.project.id = :projectId AND u.progressPercentage = 100")
     Long countCompletedUnitsByProjectId(@Param("projectId") Long projectId);
+
+    List<Unit> findByProjectId(Long projectId);
 }

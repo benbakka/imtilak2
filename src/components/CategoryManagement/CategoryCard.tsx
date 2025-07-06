@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Edit, Trash2, Calendar, Users, CheckCircle, XCircle, Clock, AlertTriangle, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Category, CategoryTeam, Team } from '../../types';
 import { BackendTaskStatus } from '../../lib/categoryTeamService';
+import { formatDateForDisplay } from '../../utils/dateFormatter';
 
 interface CategoryCardProps {
   category: Category;
@@ -66,6 +67,19 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
   
   // Add this state for the dropdown if not already present
   const [openDropdownTeamId, setOpenDropdownTeamId] = useState<string | null>(null);
+  
+  // Add state for progress input values to prevent reloads on every keystroke
+  const [progressInputValues, setProgressInputValues] = useState<Record<string, number>>({});
+  const progressUpdateTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+  
+  // Initialize progress input values from categoryTeams
+  useEffect(() => {
+    const initialValues: Record<string, number> = {};
+    categoryTeams.forEach(team => {
+      initialValues[team.id] = team.progressPercentage || 0;
+    });
+    setProgressInputValues(initialValues);
+  }, [categoryTeams]);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
@@ -84,7 +98,7 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
           <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
             <div className="flex items-center">
               <Calendar className="h-4 w-4 mr-1" />
-              {new Date(category.start_date).toLocaleDateString()} - {new Date(category.end_date).toLocaleDateString()}
+              {formatDateForDisplay(category.startDate || category.start_date, undefined, 'No Start Date')} - {formatDateForDisplay(category.endDate || category.end_date, undefined, 'No End Date')}
             </div>
             <div className="flex items-center">
               <Users className="h-4 w-4 mr-1" />
@@ -212,12 +226,27 @@ const CategoryCard: React.FC<CategoryCardProps> = ({
                       type="number"
                       min={0}
                       max={100}
-                      value={categoryTeam.progressPercentage || 0}
+                      value={progressInputValues[categoryTeam.id] ?? (categoryTeam.progressPercentage || 0)}
                       onChange={e => {
                         const value = Math.max(0, Math.min(100, Number(e.target.value)));
-                        if (onUpdateCategoryTeamStatus) {
-                          onUpdateCategoryTeamStatus(categoryTeam.id, categoryTeam.status, value);
+                        
+                        // Update local state immediately for responsive UI
+                        setProgressInputValues(prev => ({
+                          ...prev,
+                          [categoryTeam.id]: value
+                        }));
+                        
+                        // Clear any existing timeout for this team
+                        if (progressUpdateTimeouts.current[categoryTeam.id]) {
+                          clearTimeout(progressUpdateTimeouts.current[categoryTeam.id]);
                         }
+                        
+                        // Set a new timeout to update the server after user stops typing
+                        progressUpdateTimeouts.current[categoryTeam.id] = setTimeout(() => {
+                          if (onUpdateCategoryTeamStatus) {
+                            onUpdateCategoryTeamStatus(categoryTeam.id, categoryTeam.status, value);
+                          }
+                        }, 800); // 800ms debounce delay
                       }}
                       className="w-14 px-2 py-1 border border-gray-300 rounded text-xs ml-1 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                       title="Update team progress (%)"

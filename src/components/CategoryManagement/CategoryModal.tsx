@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Calendar, Users, Save } from 'lucide-react';
 import { Category, Team, CategoryTeam } from '../../types';
+import { formatDateForInput } from '../../utils/dateFormatter';
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -39,8 +40,8 @@ const CategoryModal: React.FC<CategoryModalProps> = ({
       setFormData({
         name: category.name,
         description: category.description || '',
-        start_date: category.start_date,
-        end_date: category.end_date,
+        start_date: category.startDate || category.start_date || '',
+        end_date: category.endDate || category.end_date || '',
         order: category.order
       });
       setAssignedTeams(existingTeams);
@@ -189,7 +190,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({
                 <input
                   type="date"
                   required
-                  value={formData.start_date}
+                  value={formData.start_date ? formatDateForInput(formData.start_date) : ''}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.start_date ? 'border-red-300' : 'border-gray-300'
@@ -207,7 +208,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({
                 <input
                   type="date"
                   required
-                  value={formData.end_date}
+                  value={formData.end_date ? formatDateForInput(formData.end_date) : ''}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.end_date ? 'border-red-300' : 'border-gray-300'

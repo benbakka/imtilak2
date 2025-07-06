@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CategoryTeamService } from '../lib/categoryTeamService';
 import { NotificationService } from '../lib/notificationService';
+import { formatDateForDisplay } from '../utils/dateFormatter';
 
 interface DelayAlert {
   id: string;
@@ -211,7 +212,7 @@ const Schedule: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return formatDateForDisplay(dateString, {
       month: 'short',
       day: 'numeric',
       year: 'numeric'

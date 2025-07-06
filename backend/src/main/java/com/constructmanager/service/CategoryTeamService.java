@@ -7,6 +7,7 @@ import com.constructmanager.repository.CategoryRepository;
 import com.constructmanager.repository.CategoryTeamRepository;
 import com.constructmanager.repository.TeamRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,12 @@ public class CategoryTeamService {
     
     @Autowired
     private TeamRepository teamRepository;
+    
+    @Autowired
+    private CacheManager cacheManager;
+    
+    @Autowired
+    private ProgressService progressService;
     
     /**
      * Get category teams by category
@@ -66,7 +73,15 @@ public class CategoryTeamService {
                             categoryTeam.setPaymentStatus(dto.getPaymentStatus());
                             categoryTeam.setNotes(dto.getNotes());
                             
-                            return categoryTeamRepository.save(categoryTeam);
+                            CategoryTeam savedCategoryTeam = categoryTeamRepository.save(categoryTeam);
+                            
+                            // Evict the categoryDetails cache for the unit associated with this category team
+                            if (category.getUnit() != null) {
+                                Long unitId = category.getUnit().getId();
+                                cacheManager.getCache("categoryDetails").evict(unitId);
+                            }
+                            
+                            return savedCategoryTeam;
                         }));
     }
     
@@ -94,13 +109,21 @@ public class CategoryTeamService {
             categoryTeam.setNotes(updateDTO.getNotes());
         }
         
-        if (updateDTO.getProgressPercentage() != null) {
-            // Ensure progressPercentage is between 0 and 100
-            Integer progressPercentage = Math.max(0, Math.min(100, updateDTO.getProgressPercentage()));
-            categoryTeam.setProgressPercentage(progressPercentage);
+        // Save the basic updates first
+        CategoryTeam savedCategoryTeam = categoryTeamRepository.save(categoryTeam);
+        
+        // Evict the categoryDetails cache for the unit associated with this category team
+        if (savedCategoryTeam.getCategory() != null && savedCategoryTeam.getCategory().getUnit() != null) {
+            Long unitId = savedCategoryTeam.getCategory().getUnit().getId();
+            cacheManager.getCache("categoryDetails").evict(unitId);
         }
         
-        return categoryTeamRepository.save(categoryTeam);
+        // If progress percentage is updated, use ProgressService to update and propagate changes
+        if (updateDTO.getProgressPercentage() != null) {
+            return progressService.updateCategoryTeamProgress(id, updateDTO.getProgressPercentage());
+        }
+        
+        return savedCategoryTeam;
     }
     
     /**
@@ -110,7 +133,19 @@ public class CategoryTeamService {
     public boolean deleteCategoryTeam(Long categoryTeamId) {
         return categoryTeamRepository.findById(categoryTeamId)
                 .map(categoryTeam -> {
+                    // Store the unitId before deleting the categoryTeam
+                    Long unitId = null;
+                    if (categoryTeam.getCategory() != null && categoryTeam.getCategory().getUnit() != null) {
+                        unitId = categoryTeam.getCategory().getUnit().getId();
+                    }
+                    
                     categoryTeamRepository.delete(categoryTeam);
+                    
+                    // Evict the categoryDetails cache for the unit associated with this category team
+                    if (unitId != null) {
+                        cacheManager.getCache("categoryDetails").evict(unitId);
+                    }
+                    
                     return true;
                 })
                 .orElse(false);

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { CategoryTeamService } from '../lib/categoryTeamService';
 import { ProjectService } from '../lib/projectService';
 import { PaymentService, Payment, PaymentSummary, PaymentUpdateRequest, PaymentCreateRequest } from '../lib/paymentService';
+import { formatDateForInput } from '../utils/dateFormatter';
 
 const Payments: React.FC = () => {
   const { user } = useAuth();
@@ -167,7 +168,7 @@ const Payments: React.FC = () => {
           description: paymentData.description || '',
           amount: Number(paymentData.amount) || 0,
           status: paymentData.status || 'draft',
-          dueDate: paymentData.dueDate || new Date().toISOString().split('T')[0],
+          dueDate: paymentData.dueDate || formatDateForInput(new Date().toISOString()),
           notes: paymentData.notes || ''
         };
         
@@ -432,7 +433,7 @@ const Payments: React.FC = () => {
                   type="date"
                   required
                   value={formData.dueDate || ''}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={formatDateForInput(new Date().toISOString())}
                   onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                   disabled={isLoading}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${

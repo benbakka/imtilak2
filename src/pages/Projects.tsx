@@ -12,6 +12,8 @@ import { CategoryService, CategoryCreateRequest, CategoryUpdateRequest } from '.
 import { CategoryTeamService, CategoryTeamUpdateRequest, BackendTaskStatus } from '../lib/categoryTeamService';
 import { TeamService } from '../lib/teamService';
 import { TemplateService } from '../lib/templateService';
+import ProgressService from '../lib/progressService';
+import { formatDateForInput } from '../utils/dateFormatter';
 import ProjectCard from '../components/Dashboard/ProjectCard'; // Reusing ProjectCard from Dashboard
 import UnitCard from '../components/UnitManagement/UnitCard';
 import CategoryCard from '../components/CategoryManagement/CategoryCard';
@@ -40,23 +42,13 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onSave, pr
 
   useEffect(() => {
     if (project) {
-      // Format dates properly for the date input fields (YYYY-MM-DD)
-      const formatDateForInput = (dateString: string) => {
-        if (!dateString) return '';
-        try {
-          const date = new Date(dateString);
-          if (isNaN(date.getTime())) return '';
-          return date.toISOString().split('T')[0];
-        } catch (e) {
-          return '';
-        }
-      };
+      // Use the centralized date formatter utility
 
       setFormData({
         name: project.name,
         location: project.location,
-        start_date: project.start_date && !isNaN(new Date(project.start_date).getTime()) ? new Date(project.start_date).toISOString().split('T')[0] : '',
-        end_date: project.end_date && !isNaN(new Date(project.end_date).getTime()) ? new Date(project.end_date).toISOString().split('T')[0] : '',
+        start_date: formatDateForInput(project.start_date),
+        end_date: formatDateForInput(project.end_date),
         description: project.description || ''
       });
     } else {
@@ -165,6 +157,117 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onSave, pr
 };
 
 
+interface ProjectStatusModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (projectData: Partial<Project>) => Promise<void>;
+  project: Project;
+}
+
+const ProjectStatusModal: React.FC<ProjectStatusModalProps> = ({ isOpen, onClose, onSave, project }) => {
+  const [status, setStatus] = useState<Project['status']>(project?.status || 'planning');
+  const [progress, setProgress] = useState<number>(project?.progress || 0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (project) {
+      setStatus(project.status);
+      setProgress(project.progress);
+    }
+  }, [project, isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      // First update the project status if needed
+      if (status !== project.status) {
+        await onSave({
+          id: project.id,
+          status,
+          name: project.name,
+          location: project.location,
+          startDate: project.startDate || project.start_date,
+          endDate: project.endDate || project.end_date,
+          description: project.description
+        });
+      }
+      
+      // If progress has changed, use ProgressService to update and propagate
+      if (progress !== project.progress) {
+        await ProgressService.updateProjectProgress(project.id, progress);
+      }
+      
+      onClose();
+    } catch (err) {
+      console.error('Error updating project status:', err);
+      alert('Failed to update project status. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg w-full max-w-md">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Update Project Status</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-6 w-6" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Status</label>
+            <select 
+              value={status} 
+              onChange={(e) => setStatus(e.target.value as Project['status'])}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="planning">Planning</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="on_hold">On Hold</option>
+            </select>
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
+              <label className="font-medium">Progress</label>
+              <span>{progress}%</span>
+            </div>
+            <input 
+              type="range" 
+              min="0" 
+              max="100" 
+              value={progress} 
+              onChange={(e) => setProgress(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button 
+              type="button" 
+              onClick={onClose} 
+              disabled={isSubmitting} 
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting} 
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Updating...' : 'Update Status'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const Projects: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -181,6 +284,7 @@ const Projects: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   // Modals states
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -189,6 +293,7 @@ const Projects: React.FC = () => {
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isProjectStatusModalOpen, setIsProjectStatusModalOpen] = useState(false);
 
   // UI states
   const [loading, setLoading] = useState(true);
@@ -217,8 +322,10 @@ const Projects: React.FC = () => {
       // Normalize project data to use snake_case for ProjectCard
       const normalizedProjects = response.content.map((p) => ({
         ...p,
-        start_date: p.start_date || p.start_date || '',
-        end_date: p.end_date || p.end_date || '',
+        start_date: p.startDate || p.start_date || '',
+        end_date: p.endDate || p.end_date || '',
+        startDate: p.startDate || p.start_date || '',
+        endDate: p.endDate || p.end_date || '',
         active_team_count: typeof p.active_team_count === 'number' ? p.active_team_count : (p.active_team_count || 0)
       }));
       setProjects(normalizedProjects);
@@ -251,7 +358,15 @@ const Projects: React.FC = () => {
       console.log(`loadCategories: Fetching categories for unitId: ${unitId}`);
       const response = await CategoryService.getCategories(unitId);
       console.log('loadCategories: Received response:', response);
-      setCategories([...response]);
+      // Normalize category data to ensure both snake_case and camelCase fields are available
+      const normalizedCategories = response.map((c) => ({
+        ...c,
+        start_date: c.startDate || c.start_date || '',
+        end_date: c.endDate || c.end_date || '',
+        startDate: c.startDate || c.start_date || '',
+        endDate: c.endDate || c.end_date || ''
+      }));
+      setCategories([...normalizedCategories]);
       setError('');
     } catch (err) {
       console.error(`loadCategories: Failed to load categories for unit ${unitId}:`, err);
@@ -346,8 +461,8 @@ const Projects: React.FC = () => {
     const newProject: ProjectCreateRequest = {
       name: projectData.name!,
       location: projectData.location!,
-      startDate: projectData.start_date!,
-      endDate: projectData.end_date!,
+      startDate: projectData.startDate || projectData.start_date!,
+      endDate: projectData.endDate || projectData.end_date!,
       description: projectData.description || '',
       status: 'PLANNING' // Default status
     };
@@ -364,8 +479,8 @@ const Projects: React.FC = () => {
     const updatedProject: ProjectUpdateRequest = {
       name: projectData.name!,
       location: projectData.location!,
-      startDate: projectData.start_date!,
-      endDate: projectData.end_date!,
+      startDate: projectData.startDate || projectData.start_date!,
+      endDate: projectData.endDate || projectData.end_date!,
       description: projectData.description || '',
       status: projectData.status // Keep existing status
     };
@@ -459,8 +574,8 @@ const Projects: React.FC = () => {
     const newCategory: CategoryCreateRequest = {
       name: categoryData.name!,
       description: categoryData.description || '',
-      startDate: categoryData.start_date!,
-      endDate: categoryData.end_date!,
+      startDate: categoryData.startDate || categoryData.start_date!,
+      endDate: categoryData.endDate || categoryData.end_date!,
       orderSequence: categoryData.order || 1
     };
     const createdCategory = await CategoryService.createCategory(selectedUnitId, selectedProjectId, newCategory);
@@ -486,8 +601,8 @@ const Projects: React.FC = () => {
     const updatedCategory: CategoryUpdateRequest = {
       name: categoryData.name!,
       description: categoryData.description || '',
-      startDate: categoryData.start_date!,
-      endDate: categoryData.end_date!,
+      startDate: categoryData.startDate || categoryData.start_date!,
+      endDate: categoryData.endDate || categoryData.end_date!,
       orderSequence: categoryData.order || 1,
       progressPercentage: categoryData.progress || 0
     };
@@ -538,20 +653,25 @@ const Projects: React.FC = () => {
   };
 
   const handleUpdateCategoryTeamStatus = async (categoryTeamId: string, newStatus: BackendTaskStatus, progressPercentage?: number) => {
-    console.log('handleUpdateCategoryTeamStatus called with:', { categoryTeamId, newStatus, progressPercentage });
     try {
       const updateData: CategoryTeamUpdateRequest = { status: newStatus };
       if (typeof progressPercentage === 'number') {
         updateData.progressPercentage = Math.max(0, Math.min(100, progressPercentage));
       }
-      console.log('Before CategoryTeamService.updateCategoryTeam:', { categoryTeamId, updateData });
-      await CategoryTeamService.updateCategoryTeam(categoryTeamId, updateData);
-      console.log('After CategoryTeamService.updateCategoryTeam. Reloading categories...');
-      if (selectedUnitId) {
-        await loadCategories(selectedUnitId); // Reload categories to reflect change
+      
+      // If we're updating progress, use the ProgressService to propagate changes up the hierarchy
+      if (typeof progressPercentage === 'number') {
+        await ProgressService.updateCategoryTeamProgress(categoryTeamId, updateData.progressPercentage!);
+      } else {
+        // For status-only updates, use the regular service
+        await CategoryTeamService.updateCategoryTeam(categoryTeamId, updateData);
       }
-      console.log('Categories reloaded after status update.');
-      console.log('handleUpdateCategoryTeamStatus: Successfully updated category team status and reloaded categories.');
+      
+      // Only reload categories if the status changed (not for progress updates)
+      // This prevents unnecessary reloads when just updating progress percentage
+      if (updateData.status && selectedUnitId) {
+        await loadCategories(selectedUnitId);
+      }
     } catch (error) {
       console.error(`Error updating category team ${categoryTeamId} status:`, error);
       alert('Failed to update team status. Please try again.');
@@ -564,6 +684,11 @@ const Projects: React.FC = () => {
   const openProjectModal = (project: Project | null = null) => {
     setEditingProject(project);
     setShowProjectModal(true);
+  };
+
+  const openProjectStatusModal = (project: Project) => {
+    setSelectedProject(project);
+    setIsProjectStatusModalOpen(true);
   };
 
   const openUnitModal = (unit: Unit | null = null) => {
@@ -605,6 +730,7 @@ const Projects: React.FC = () => {
               }}
               onEdit={openProjectModal}
               onDelete={handleDeleteProject}
+              onStatusUpdate={openProjectStatusModal}
             />
           </div>
         ))
@@ -893,6 +1019,12 @@ const Projects: React.FC = () => {
         onClose={() => setShowProjectModal(false)}
         onSave={editingProject ? handleUpdateProject : handleCreateProject}
         project={editingProject}
+      />
+      <ProjectStatusModal
+        isOpen={isProjectStatusModalOpen}
+        onClose={() => setIsProjectStatusModalOpen(false)}
+        onSave={handleUpdateProject}
+        project={selectedProject!}
       />
       <UnitModal
         isOpen={showUnitModal}

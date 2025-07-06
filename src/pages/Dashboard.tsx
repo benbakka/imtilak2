@@ -9,6 +9,7 @@ import { ProjectService } from '../lib/projectService';
 import { BackendUnitType, UnitService } from '../lib/unitService';
 import { DashboardService, DashboardStats } from '../lib/dashboardService';
 import ProjectCard from '../components/Dashboard/ProjectCard';
+import { formatDateForInput } from '../utils/dateFormatter';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -39,8 +40,10 @@ const Dashboard: React.FC = () => {
       // Map start_date/end_date for compatibility
       const mappedProjects = projectsResponse.content.map((p) => ({
         ...p,
-        start_date: p.start_date,
-        end_date: p.end_date,
+        start_date: p.startDate || p.start_date,
+        end_date: p.endDate || p.end_date,
+        startDate: p.startDate || p.start_date,
+        endDate: p.endDate || p.end_date,
       }));
       setProjects(mappedProjects);
       
@@ -321,7 +324,7 @@ const Dashboard: React.FC = () => {
                 <input
                   type="date"
                   required
-                  value={formData.start_date}
+                  value={formData.start_date ? formatDateForInput(formData.start_date) : ''}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.start_date ? 'border-red-300' : 'border-gray-300'
@@ -337,7 +340,7 @@ const Dashboard: React.FC = () => {
                 <input
                   type="date"
                   required
-                  value={formData.end_date}
+                  value={formData.end_date ? formatDateForInput(formData.end_date) : ''}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.end_date ? 'border-red-300' : 'border-gray-300'
